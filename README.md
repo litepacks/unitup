@@ -327,6 +327,7 @@ unitup add worker.py --name worker --group backend --start
 - `--env-file <file>`: Path to environment file (adds `EnvironmentFile=...`).
 - `--restart <policy>`: Systemd restart policy (`on-failure`, `always`, `no`, `on-abnormal`. Default: `on-failure`).
 - `--start`: Automatically enables and starts the service immediately (`systemctl --user enable --now`).
+- `--force`, `-f`: Force overwrite of an existing service if it is currently running.
 
 Generated unit file example (`~/.config/systemd/user/unitup-worker.service`):
 
@@ -477,11 +478,15 @@ unitup failures
 
 ### `unitup remove <name|@group>`
 
-Stops, disables, and deletes the unit file, then reloads systemd:
+Stops, disables, and deletes the unit file, then reloads systemd. If the service is currently running, `unitup` prevents accidental deletion and requires `--force` / `-f`:
 
 ```bash
+# Remove stopped service
 unitup remove worker
-unitup remove @backend
+
+# Force remove an actively running service or group
+unitup remove worker --force
+unitup remove @backend -f
 ```
 
 ---

@@ -127,7 +127,7 @@ describe('Programmatic API with Mocked Systemctl', () => {
     assert.equal(unitFileExists('to-remove'), true);
     executedCommands = [];
 
-    await removeService('to-remove');
+    await removeService('to-remove', { force: true });
 
     assert.equal(unitFileExists('to-remove'), false);
 

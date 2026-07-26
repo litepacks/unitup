@@ -336,6 +336,7 @@ WantedBy=default.target</code></pre>
 # --env KEY=val       Set environment variable
 # --env-file <path>   Load environment file
 # --start             Enable and start service immediately
+# --force, -f         Force overwrite of currently running service
 
 unitup add worker.py --name worker --group backend --env APP_ENV=production --start</code></pre>
         </div>
@@ -387,6 +388,14 @@ unitup logs worker --follow --since 1h --priority err --json</code></pre>
 unitup journal rotate
 unitup journal vacuum --size 500M --yes
 unitup journal vacuum --time 14d --dry-run</code></pre>
+        </div>
+
+        <!-- remove -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup remove &lt;name|@group&gt; [--force]</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Stops, disables, and deletes a service or group. Active running services require <code class="text-xs">--force</code> / <code class="text-xs">-f</code> to prevent accidental deletion.</p>
+          <pre><code class="language-bash">unitup remove worker
+unitup remove @backend --force</code></pre>
         </div>
       </div>
     </section>

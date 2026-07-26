@@ -280,6 +280,26 @@ export async function resetFailed() {
 
 export async function addService(opts) {
   const safeName = sanitizeServiceName(opts.name);
+
+  if (unitFileExists(safeName)) {
+    try {
+      const show = await getServiceShow(safeName);
+      if (show.ActiveState === 'active') {
+        if (!opts.force) {
+          throw new Error(
+            `Service "${safeName}" is currently running.\n` +
+            `Use --force (-f) to overwrite running services, or stop it first:\n` +
+            `  unitup stop ${safeName}`
+          );
+        }
+      }
+    } catch (err) {
+      if (err.message.includes('currently running')) {
+        throw err;
+      }
+    }
+  }
+
   const runtimeConfig = await resolveRuntimeConfig({ ...opts, name: safeName });
 
   const { path: unitPath } = writeUnitFile({
@@ -376,14 +396,16 @@ export async function restartService(name) {
   return true;
 }
 
-export async function removeService(name) {
+export async function removeService(name, opts = {}) {
+  const force = typeof opts === 'boolean' ? opts : !!opts?.force;
+
   if (name && typeof name === 'string' && name.startsWith('@')) {
     const list = await getServicesByGroup(name);
     if (list.length === 0) {
       throw new Error(`No services found in group "${name}".`);
     }
     for (const s of list) {
-      await removeService(s);
+      await removeService(s, { force });
     }
     return true;
   }
@@ -391,6 +413,23 @@ export async function removeService(name) {
   const safeName = sanitizeServiceName(name);
   if (!unitFileExists(safeName)) {
     throw new Error(`Service "${safeName}" does not exist.`);
+  }
+
+  try {
+    const show = await getServiceShow(safeName);
+    if (show.ActiveState === 'active') {
+      if (!force) {
+        throw new Error(
+          `Service "${safeName}" is currently running.\n` +
+          `Use --force (-f) to remove running services, or stop it first:\n` +
+          `  unitup stop ${safeName}`
+        );
+      }
+    }
+  } catch (err) {
+    if (err.message.includes('currently running')) {
+      throw err;
+    }
   }
 
   // Attempt disable and stop

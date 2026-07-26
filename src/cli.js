@@ -53,6 +53,7 @@ export function parseArgs(argv) {
       lines: 100,
       help: false,
       version: false,
+      force: false,
       memoryHigh: '',
       memoryMax: '',
       memorySwapMax: '',
@@ -163,8 +164,9 @@ export function parseArgs(argv) {
     } else if (arg === '--raw') {
       result.flags.raw = true;
       i++;
-    } else if (arg === '-f' || arg === '--follow') {
+    } else if (arg === '-f' || arg === '--follow' || arg === '--force') {
       result.flags.follow = true;
+      result.flags.force = true;
       i++;
     } else if (arg === '-c' || arg === '--cat') {
       result.flags.cat = true;
@@ -414,7 +416,8 @@ export async function runCli(argv = process.argv.slice(2)) {
           start: flags.start,
           memoryHigh: flags.memoryHigh,
           memoryMax: flags.memoryMax,
-          memorySwapMax: flags.memorySwapMax
+          memorySwapMax: flags.memorySwapMax,
+          force: flags.force
         });
 
         console.log(`✓ Service "${res.name}" created at ${res.unitPath}`);
@@ -583,7 +586,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await removeService(name);
+          await removeService(name, { force: flags.force });
           console.log(`✓ Service "${sanitizeServiceName(name)}" removed.`);
         }
         break;

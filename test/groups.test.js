@@ -176,7 +176,7 @@ describe('Group & Metadata & Inspect & Failures Features', () => {
       await runCli(['start', '@my-group']);
       await runCli(['stop', '@my-group']);
       await runCli(['restart', '@my-group']);
-      await runCli(['remove', '@my-group']);
+      await runCli(['remove', '@my-group', '--force']);
     } finally {
       console.log = origLog;
     }

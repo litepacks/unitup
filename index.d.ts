@@ -78,6 +78,12 @@ export interface CreateServiceOptions {
   start?: boolean;
 
   /**
+   * Force overwrite of currently running service.
+   * @default false
+   */
+  force?: boolean;
+
+  /**
    * Soft memory limit directive (e.g. '400M').
    */
   memoryHigh?: string;
@@ -406,7 +412,7 @@ export function addService(options: CreateServiceOptions): Promise<AddServiceRes
 export function startService(name: string, enable?: boolean): Promise<boolean>;
 export function stopService(name: string): Promise<boolean>;
 export function restartService(name: string): Promise<boolean>;
-export function removeService(name: string): Promise<boolean>;
+export function removeService(name: string, options?: { force?: boolean } | boolean): Promise<boolean>;
 export function getServiceStatus(name: string): Promise<ServiceStatus>;
 export function getServiceStatusRaw(name: string): Promise<string>;
 export function listServices(options?: { group?: string }): Promise<ListServiceItem[]>;
