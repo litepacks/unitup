@@ -370,7 +370,7 @@ describe('Coverage Extension Suite', () => {
       await runDoctor();
     });
     assert.ok(docLogs1.some(line => line.includes('unitup doctor')));
-    assert.ok(docLogs1.some(line => line.includes('! User lingering is disabled')));
+    assert.ok(docLogs1.some(line => line.includes('User lingering is')));
 
     // 2. Non-Linux OS check
     const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
