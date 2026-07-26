@@ -1,6 +1,6 @@
 {
   "name": "unitup",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Minimal systemd user service wrapper for Node.js scripts",
   "main": "src/index.js",
   "types": "./index.d.ts",
