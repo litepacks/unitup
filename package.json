@@ -11,6 +11,9 @@
   "scripts": {
     "test": "node --test test/*.test.js"
   },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  },
   "keywords": [
     "systemd",
     "service",
