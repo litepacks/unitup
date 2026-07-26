@@ -36,6 +36,14 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/litepacks/unitup.git"
+  },
+  "bugs": {
+    "url": "https://github.com/litepacks/unitup/issues"
+  },
+  "homepage": "https://github.com/litepacks/unitup#readme",
   "engines": {
     "node": ">=20.0.0"
   }
