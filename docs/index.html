@@ -24,7 +24,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/ini.min.js"></script>
-  <style>
+    body { overflow-x: hidden; }
+    .grid > * { min-width: 0; }
     html { scroll-behavior: smooth; }
     pre { tab-size: 2; margin: 0; overflow-x: auto; max-width: 100%; }
     pre code { padding: 1rem; background: #0f172a; border-radius: 0.75rem; font-size: 0.85rem; display: block; overflow-x: auto; white-space: pre; }
@@ -212,8 +213,8 @@ unitup add ./server --runtime native --name api --start</code></pre>
         At its core, unitup generates systemd service unit files directly from a generic <code class="text-cyan-600 dark:text-cyan-400">command + args</code> model rather than being hardcoded to Node.js:
       </p>
 
-      <div class="grid md:grid-cols-2 gap-6">
-        <div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="min-w-0">
           <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2">JSON Execution Model</h3>
           <pre><code class="language-json">{
   "command": "/usr/bin/python3",
@@ -224,8 +225,8 @@ unitup add ./server --runtime native --name api --start</code></pre>
   }
 }</code></pre>
         </div>
-        <div>
-          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2">Generated Unit File (<code class="text-xs">unitup-worker.service</code>)</h3>
+        <div class="min-w-0">
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2 flex flex-wrap items-center gap-1">Generated Unit File <span class="lowercase font-mono text-xs normal-case opacity-90 break-all">(unitup-worker.service)</span></h3>
           <pre><code class="language-ini">[Unit]
 Description=unitup service: worker
 After=network.target
