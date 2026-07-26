@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="description" content="unitup — Minimal, zero-dependency systemd-native service manager for Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell, and native binaries." />
+  <title>unitup — Systemd-Native Multi-Runtime Service Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/ini.min.js"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    pre { tab-size: 2; margin: 0; }
+    pre code { padding: 1rem; background: #0f172a; border-radius: 0.75rem; font-size: 0.875rem; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .doc-section { scroll-margin-top: 2rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.75rem 1rem; text-align: left; }
+    th { background: #f8fafc; font-weight: 600; }
+    .dark th, .dark td { border-color: #334155; }
+    .dark th { background: #1e293b; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100 transition-colors">
+  <div class="max-w-6xl mx-auto px-6 py-10">
+    <!-- Top Navigation Bar -->
+    <div class="flex items-center justify-between mb-10 gap-4 flex-wrap pb-6 border-b border-slate-200 dark:border-slate-800">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl font-black tracking-tight text-cyan-600 dark:text-cyan-400">unitup</span>
+        <span class="text-xs px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300 font-semibold border border-cyan-300 dark:border-cyan-800">v0.0.9</span>
+      </div>
+      <nav class="flex flex-wrap gap-x-4 gap-y-2 text-sm font-medium" aria-label="Page sections">
+        <a href="#overview" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">Overview</a>
+        <a href="#comparison" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">vs PM2</a>
+        <a href="#architecture" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">Architecture</a>
+        <a href="#runtimes" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">Runtimes</a>
+        <a href="#cli" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">CLI Reference</a>
+        <a href="#api" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">API</a>
+        <a href="#declarative" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">Roadmap</a>
+        <a href="#troubleshooting" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400">Lingering</a>
+      </nav>
+      <button id="theme-toggle" type="button" class="p-2 rounded-lg border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800 dark:text-slate-400 shrink-0" aria-label="Toggle dark mode">
+        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+      </button>
+    </div>
+
+    <!-- Header / Hero Section -->
+    <header class="mb-14">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-50 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800 mb-4">
+        ⚡ Zero-Daemon · Systemd-Native · Multi-Runtime
+      </div>
+      <h1 class="text-4xl sm:text-5xl font-extrabold text-slate-900 dark:text-white tracking-tight mb-4">
+        Systemd Service Management,<br class="hidden sm:inline" />Simplified for Any App.
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed mb-6">
+        <strong class="text-slate-800 dark:text-slate-200">unitup</strong> is a zero-dependency CLI & library to run Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell scripts, and compiled native executables as native OS <code class="text-cyan-700 dark:text-cyan-400">systemd</code> user services without requiring <code class="text-cyan-700 dark:text-cyan-400">sudo</code>.
+      </p>
+
+      <!-- Quick Try Code Block -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-900 p-4 max-w-2xl shadow-xl">
+        <div class="flex items-center justify-between text-xs text-slate-400 mb-2 font-mono border-b border-slate-800 pb-2">
+          <span>Quick Start (30-second try)</span>
+          <span>bash</span>
+        </div>
+        <pre><code class="language-bash">npm install -g unitup
+
+# Add & start Node.js server
+unitup add server.js --start
+unitup status server
+unitup logs server --follow
+
+# Multi-runtime & Native executables
+unitup add worker.py --runtime python --start
+unitup add ./server --runtime native --name api --start</code></pre>
+      </div>
+    </header>
+
+    <!-- Section: Overview -->
+    <section id="overview" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Core Promises</h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 shadow-sm">
+          <div class="text-cyan-600 dark:text-cyan-400 text-xl font-bold mb-1">⚡ No Resident Daemon</div>
+          <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Exits immediately after configuring services. Zero persistent memory or CPU overhead from unitup itself.
+          </p>
+        </div>
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 shadow-sm">
+          <div class="text-cyan-600 dark:text-cyan-400 text-xl font-bold mb-1">🌐 Multi-Runtime</div>
+          <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Out-of-the-box support for Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell, and native binaries.
+          </p>
+        </div>
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 shadow-sm">
+          <div class="text-cyan-600 dark:text-cyan-400 text-xl font-bold mb-1">🔒 Safe & Transparent</div>
+          <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Avoids shell execution (<code class="text-xs">shell: false</code>). Saves standard text unit files directly to <code class="text-xs">~/.config/systemd/user/</code>.
+          </p>
+        </div>
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 shadow-sm">
+          <div class="text-cyan-600 dark:text-cyan-400 text-xl font-bold mb-1">🛠️ Absolute Pathing</div>
+          <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Resolves absolute binary & script paths and automatically injects proper <code class="text-xs">PATH</code> environment into unit files.
+          </p>
+        </div>
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 shadow-sm">
+          <div class="text-cyan-600 dark:text-cyan-400 text-xl font-bold mb-1">📦 Zero Dependencies</div>
+          <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Built strictly with Node.js standard library modules. Extremely lightweight ESM & CJS footprint.
+          </p>
+        </div>
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 shadow-sm">
+          <div class="text-cyan-600 dark:text-cyan-400 text-xl font-bold mb-1">🔄 100% Backward Compatible</div>
+          <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Full support for existing Node.js configurations and legacy metadata formats without breaking changes.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section: Comparison -->
+    <section id="comparison" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">unitup vs PM2</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+        <strong class="text-slate-800 dark:text-slate-200">unitup</strong> is not a PM2 replacement or an independent process manager. While PM2 runs its own master daemon, unitup is strictly a thin, transparent CLI layer on top of Linux OS <code class="text-cyan-600 dark:text-cyan-400">systemd</code>.
+      </p>
+
+      <div class="overflow-x-auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>unitup</th>
+              <th>PM2</th>
+            </tr>
+          </thead>
+          <tbody class="text-sm">
+            <tr>
+              <td class="font-semibold">Background Process (Daemon)</td>
+              <td><strong class="text-emerald-600 dark:text-emerald-400">No resident daemon</strong>. Systemd directly supervises processes.</td>
+              <td>Runs a persistent process-management daemon.</td>
+            </tr>
+            <tr>
+              <td class="font-semibold">System Integration</td>
+              <td>Native Linux OS <code class="text-xs">systemd</code> user service (<code class="text-xs">~/.config/systemd/user/</code>).</td>
+              <td>Custom process monitoring via PM2's internal daemon.</td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Multi-Runtime Support</td>
+              <td><strong class="text-emerald-600 dark:text-emerald-400">Node, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell, Native Binaries</strong>.</td>
+              <td>Node.js-focused process manager with support for running other commands.</td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Privileges Required</td>
+              <td>Does <strong class="text-emerald-600 dark:text-emerald-400">not</strong> require <code class="text-xs">sudo</code> for normal service creation and management.</td>
+              <td>Boot integration commonly requires running PM2 startup with elevated privileges.</td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Dependencies</td>
+              <td><strong class="text-emerald-600 dark:text-emerald-400">0 Runtime Dependencies</strong> (Node.js standard modules only).</td>
+              <td>Dozens of 3rd party npm packages.</td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Log Management</td>
+              <td>Delegates 100% to native Linux <code class="text-xs">journald</code> system (<code class="text-xs">journalctl</code>).</td>
+              <td>Manages <code class="text-xs">.pm2/logs</code> files (requires <code class="text-xs">pm2-logrotate</code> plugin).</td>
+            </tr>
+            <tr>
+              <td class="font-semibold">Boot Startup</td>
+              <td>Native systemd lingering (<code class="text-xs">loginctl enable-linger</code>).</td>
+              <td>Custom startup script launching PM2 master daemon.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section: Architecture -->
+    <section id="architecture" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Core Architecture</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+        At its core, unitup generates systemd service unit files directly from a generic <code class="text-cyan-600 dark:text-cyan-400">command + args</code> model rather than being hardcoded to Node.js:
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-6">
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2">JSON Execution Model</h3>
+          <pre><code class="language-json">{
+  "command": "/usr/bin/python3",
+  "args": ["/home/user/apps/worker.py"],
+  "cwd": "/home/user/apps",
+  "env": {
+    "APP_ENV": "production"
+  }
+}</code></pre>
+        </div>
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2">Generated Unit File (<code class="text-xs">unitup-worker.service</code>)</h3>
+          <pre><code class="language-ini">[Unit]
+Description=unitup service: worker
+After=network.target
+
+[Service]
+Type=simple
+SyslogIdentifier=unitup-worker
+WorkingDirectory=/home/user/apps
+ExecStart=/usr/bin/python3 /home/user/apps/worker.py
+Restart=on-failure
+RestartSec=3
+Environment=PATH="/usr/bin:/usr/local/bin:/bin"
+Environment=APP_ENV="production"
+
+[Install]
+WantedBy=default.target</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section: Runtimes -->
+    <section id="runtimes" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Supported Runtimes & Auto-Detection</h2>
+      
+      <div class="overflow-x-auto mb-6">
+        <table>
+          <thead>
+            <tr>
+              <th>Runtime</th>
+              <th>Extension / Auto-Detection</th>
+              <th>Command Executed</th>
+            </tr>
+          </thead>
+          <tbody class="text-sm">
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Node.js</td>
+              <td><code class="text-xs">.js, .mjs, .cjs</code> or shebang <code class="text-xs">#!/usr/bin/env node</code></td>
+              <td><code class="text-xs">node &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Python</td>
+              <td><code class="text-xs">.py</code> or shebang <code class="text-xs">#!/usr/bin/env python3</code></td>
+              <td><code class="text-xs">python3 &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Ruby</td>
+              <td><code class="text-xs">.rb</code> or shebang <code class="text-xs">#!/usr/bin/env ruby</code></td>
+              <td><code class="text-xs">ruby &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">PHP</td>
+              <td><code class="text-xs">.php</code> or shebang <code class="text-xs">#!/usr/bin/env php</code></td>
+              <td><code class="text-xs">php &lt;script&gt;</code> (Supports <code class="text-xs">-S 0.0.0.0:8080</code>)</td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Bun</td>
+              <td>Explicit <code class="text-xs">--runtime bun</code> or shebang <code class="text-xs">#!/usr/bin/env bun</code></td>
+              <td><code class="text-xs">bun &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Deno</td>
+              <td>Explicit <code class="text-xs">--runtime deno</code> or shebang <code class="text-xs">#!/usr/bin/env deno</code></td>
+              <td><code class="text-xs">deno run &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Go</td>
+              <td><code class="text-xs">.go</code> or shebang <code class="text-xs">#!/usr/bin/env go</code></td>
+              <td><code class="text-xs">go run &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Elixir</td>
+              <td><code class="text-xs">.ex, .exs</code> or shebang <code class="text-xs">#!/usr/bin/env elixir</code></td>
+              <td><code class="text-xs">elixir &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Shell</td>
+              <td><code class="text-xs">.sh</code> or shebang <code class="text-xs">#!/bin/bash</code> / <code class="text-xs">#!/bin/sh</code></td>
+              <td><code class="text-xs">bash &lt;script&gt;</code></td>
+            </tr>
+            <tr>
+              <td class="font-semibold text-cyan-600 dark:text-cyan-400">Native Executable</td>
+              <td>Explicit <code class="text-xs">--runtime native</code></td>
+              <td>Direct binary execution (<code class="text-xs">./server</code>)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="p-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 text-sm text-amber-900 dark:text-amber-300">
+        💡 <strong>Go Production Recommendation:</strong> For production deployments, compiling the Go application and registering the resulting native binary (<code class="text-xs">unitup add ./server --runtime native</code>) is recommended instead of <code class="text-xs">go run</code>.
+      </div>
+    </section>
+
+    <!-- Section: CLI Reference -->
+    <section id="cli" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">CLI Reference</h2>
+      
+      <div class="space-y-6">
+        <!-- doctor -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup doctor</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Runs system readiness diagnostics (Linux OS, systemd PID 1, user bus, lingering, unit directory permissions, and detected runtimes).</p>
+          <pre><code class="language-bash">unitup doctor</code></pre>
+        </div>
+
+        <!-- add -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup add &lt;script|exec&gt; [options]</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Generates and registers a new systemd user service unit file.</p>
+          <pre><code class="language-bash"># Flags:
+# --name <name>        Service name (default: script basename)
+# --runtime <name>     Specify runtime (node, python, ruby, php, bun, deno, shell, go, elixir, native)
+# --runtime-arg <val> Argument passed to binary (e.g. -S 0.0.0.0:8080 or --allow-net)
+# --command <path>    Explicit binary executable (bypasses auto-detection)
+# --arg <val>         Argument to pass to command
+# --group <group>     Assign service to group (default: default)
+# --env KEY=val       Set environment variable
+# --env-file <path>   Load environment file
+# --start             Enable and start service immediately
+
+unitup add worker.py --name worker --group backend --env APP_ENV=production --start</code></pre>
+        </div>
+
+        <!-- list / ls -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup list</code> / <code class="text-base">unitup ls</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Lists all managed services in a clean aligned table.</p>
+          <pre><code class="language-bash">unitup list --group backend</code></pre>
+        </div>
+
+        <!-- inspect -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup inspect &lt;name&gt;</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Displays full service configuration overview (Command, Arguments, Working directory, Unit file) without revealing secrets or environment variables.</p>
+          <pre><code class="language-bash">unitup inspect worker</code></pre>
+        </div>
+
+        <!-- start / stop / restart -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup start / stop / restart &lt;name|@group&gt;</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Controls service state individually or in batch using <code class="text-xs">@group</code> syntax.</p>
+          <pre><code class="language-bash">unitup start @backend --enable
+unitup restart worker
+unitup stop @backend</code></pre>
+        </div>
+
+        <!-- limits -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup limits &lt;name&gt; [options]</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Configures native systemd memory limits for a service or resets limits back to system defaults.</p>
+          <pre><code class="language-bash">unitup limits api --memory-high 400M --memory-max 512M --swap-max 256M
+unitup limits api --reset-memory</code></pre>
+        </div>
+
+        <!-- status & logs -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup status / logs &lt;name&gt;</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Inspects process status with live memory metrics or streams journalctl logs with advanced filtering.</p>
+          <pre><code class="language-bash">unitup status worker
+unitup logs worker --follow --since 1h --priority err --json</code></pre>
+        </div>
+
+        <!-- journal -->
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-base">unitup journal &lt;action&gt; [options]</code></h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Performs safe journalctl storage maintenance (disk-usage, rotate, vacuum by size, time, or file count).</p>
+          <pre><code class="language-bash">unitup journal disk-usage
+unitup journal rotate
+unitup journal vacuum --size 500M --yes
+unitup journal vacuum --time 14d --dry-run</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section: API -->
+    <section id="api" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Programmatic API</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+        unitup exports full ESM and CommonJS interfaces with TypeScript declarations (<code class="text-cyan-600 dark:text-cyan-400">index.d.ts</code>).
+      </p>
+
+      <div class="space-y-6">
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2">ESM / TypeScript Example</h3>
+          <pre><code class="language-typescript">import {
+  createService,
+  startService,
+  stopService,
+  restartService,
+  getServiceStatus,
+  listServices,
+  isSystemdAvailable
+} from "unitup";
+
+import type {
+  CreateServiceOptions,
+  ServiceStatus
+} from "unitup";
+
+if (await isSystemdAvailable()) {
+  // Add service with explicit command + args
+  await createService({
+    name: "worker",
+    command: "/usr/bin/python3",
+    args: ["/home/user/apps/worker.py"],
+    cwd: "/home/user/apps",
+    restart: "on-failure",
+    start: true
+  });
+
+  const status: ServiceStatus = await getServiceStatus("worker");
+  console.log(`PID: ${status.pid}, Status: ${status.status}`);
+}</code></pre>
+        </div>
+
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2">CommonJS Support</h3>
+          <pre><code class="language-javascript">const {
+  createService,
+  startService,
+  getServiceStatus
+} = require("unitup");
+
+await createService({
+  name: "api",
+  script: "./server.js",
+  start: true
+});</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section: Declarative Roadmap -->
+    <section id="declarative" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Declarative Stack Configuration (Roadmap Preview)</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+        Define your entire application stack declaratively using <code class="text-cyan-600 dark:text-cyan-400">unitup.yml</code> or <code class="text-cyan-600 dark:text-cyan-400">unitup.json</code>:
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-6 mb-4">
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2"><code class="text-xs">unitup.yml</code> Spec</h3>
+          <pre><code class="language-yaml">apps:
+  api:
+    runtime: node
+    script: ./server.js
+    env:
+      NODE_ENV: production
+      PORT: 3000
+    start: true
+
+  worker:
+    runtime: python
+    script: ./worker.py
+    env:
+      APP_ENV: production
+
+  native-service:
+    runtime: native
+    command: ./server</code></pre>
+        </div>
+
+        <div>
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400 mb-2">Planned Declarative Commands</h3>
+          <pre><code class="language-bash"># Preview differences against active units
+unitup diff
+
+# Apply unitup.yml configuration
+unitup apply
+
+# Perform batch operations on group
+unitup restart @default</code></pre>
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-500 dark:text-slate-500">
+        *Note: Relative script, command, cwd, and env-file paths in <code class="text-xs">unitup.yml</code> are resolved relative to the configuration file.
+      </p>
+    </section>
+
+    <!-- Section: Troubleshooting -->
+    <section id="troubleshooting" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Troubleshooting & User Lingering</h2>
+      
+      <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50 space-y-4">
+        <h3 class="font-bold text-slate-900 dark:text-white">Enable User Lingering (Persistent Services)</h3>
+        <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+          Depending on the Linux distribution and systemd-logind configuration, user services may stop after logout. Enable lingering to allow them to continue running without an active login session:
+        </p>
+        <pre><code class="language-bash">loginctl enable-linger $USER</code></pre>
+        <p class="text-xs text-slate-500 dark:text-slate-500">
+          Verify lingering state anytime with <code class="text-xs">unitup doctor</code>. unitup will warn if lingering is disabled but will never prompt for sudo automatically.
+        </p>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="pt-8 border-t border-slate-200 dark:border-slate-800 text-center text-sm text-slate-500 dark:text-slate-500">
+      <p>unitup is released under the <a href="https://opensource.org/licenses/MIT" class="underline hover:text-slate-700 dark:hover:text-slate-300">MIT License</a>. Native Systemd User Service Manager.</p>
+    </footer>
+  </div>
+
+  <script>
+    // Theme toggle logic
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    themeToggleBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+    });
+
+    // Highlight code blocks
+    document.addEventListener('DOMContentLoaded', () => {
+      hljs.highlightAll();
+    });
+  </script>
+</body>
+</html>

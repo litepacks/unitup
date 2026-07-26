@@ -1,0 +1,16 @@
+# Tests
+test/
+
+# Config & CI
+.github/
+.gitignore
+.npmignore
+
+# Environment & temporary files
+.env
+.env.*
+coverage/
+.nyc_output/
+*.log
+.DS_Store
+Thumbs.db
