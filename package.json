@@ -1,7 +1,7 @@
 {
   "name": "unitup",
   "version": "0.0.10",
-  "description": "Minimal, zero-dependency systemd-native service manager for Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell scripts, and native binaries",
+  "description": "Minimal, zero-dependency systemd-native service manager for any runtime, script, or executable",
   "main": "src/index.js",
   "types": "./index.d.ts",
   "type": "module",
