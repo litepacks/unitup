@@ -25,20 +25,39 @@ import {
 } from './systemd.js';
 import { getDoctorInfo } from './doctor.js';
 import {
+  createSchedule,
+  listSchedules,
+  getScheduleStatus,
+  runSchedule,
+  enableSchedule,
+  disableSchedule,
+  removeSchedule,
+  validateCalendar
+} from './schedule.js';
+import {
   getUserUnitDir,
   getUnitPath,
+  getTimerPath,
   unitFileExists,
-  parseUnitContent
+  timerFileExists,
+  parseUnitContent,
+  generateTimerContent,
+  generateScheduleServiceContent
 } from './unit.js';
 import {
   sanitizeServiceName,
   getUnitFilename,
+  getTimerFilename,
   getServiceNameFromUnit,
   readAppMetadata,
   getAppMetadataPath,
+  readScheduleMetadata,
+  getScheduleMetadataPath,
+  getSchedulesDir,
   getAppsDir,
   getUnitupDir,
   validateMemorySize,
+  validateDuration,
   formatMemoryBytes
 } from './utils.js';
 import { detectRuntime, resolveRuntimeConfig } from './runtimes/index.js';
@@ -61,8 +80,19 @@ export {
   executeJournalctlMaintenance as executeJournalctlMaintenance,
   runJournalctlLogs as getServiceLogs,
 
-  // Memory & Validation helpers
+  // Programmatic schedule management API
+  createSchedule,
+  listSchedules,
+  getScheduleStatus,
+  runSchedule,
+  enableSchedule,
+  disableSchedule,
+  removeSchedule,
+  validateCalendar,
+
+  // Duration & Validation helpers
   validateMemorySize,
+  validateDuration,
   formatMemoryBytes,
 
   // Runtime detection & resolution
@@ -72,6 +102,9 @@ export {
   // Metadata helpers
   readAppMetadata,
   getAppMetadataPath,
+  readScheduleMetadata,
+  getScheduleMetadataPath,
+  getSchedulesDir,
   getAppsDir,
   getUnitupDir,
 
@@ -89,10 +122,15 @@ export {
   // Unit file & path helpers
   getUserUnitDir,
   getUnitPath,
+  getTimerPath,
   unitFileExists,
+  timerFileExists,
   parseUnitContent,
+  generateTimerContent,
+  generateScheduleServiceContent,
   sanitizeServiceName,
   getUnitFilename,
+  getTimerFilename,
   getServiceNameFromUnit,
 
   // Runner override for testing

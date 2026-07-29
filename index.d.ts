@@ -463,3 +463,96 @@ export function getUnitupDir(): string;
 // Testing Mock Helpers
 export function setCommandRunner(runner: CommandRunnerFn): void;
 export function resetCommandRunner(): void;
+
+// ---------------------------------------------------------------------------
+// Schedule Management API
+// ---------------------------------------------------------------------------
+
+export interface CreateScheduleOptions {
+  name?: string;
+  script?: string;
+  command?: string;
+  runtime?: string;
+  args?: string[];
+  runtimeArgs?: string[];
+  cwd?: string;
+  env?: Record<string, string> | string[];
+  envFile?: string;
+  group?: string;
+  every?: string;
+  calendar?: string;
+  onBoot?: string;
+  onActive?: string;
+  randomDelay?: string;
+  persistent?: boolean;
+  start?: boolean;
+  enable?: boolean;
+}
+
+export interface ScheduleMetadata {
+  name: string;
+  group: string;
+  type: string;
+  runtime: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  schedule: {
+    every: string | null;
+    calendar: string | null;
+    onBoot: string | null;
+    onActive: string | null;
+    persistent: boolean;
+    randomDelay: string | null;
+  };
+  serviceUnit: string;
+  timerUnit: string;
+}
+
+export interface ScheduleStatus {
+  name: string;
+  group: string;
+  schedule: string;
+  nextRun: string;
+  lastRun: string;
+  status: string;
+  activeState: string;
+  subState: string;
+  unitFileState: string;
+  serviceActiveState: string;
+  metadata?: ScheduleMetadata | null;
+  serviceUnit: string;
+  timerUnit: string;
+}
+
+export interface CreateScheduleResult {
+  name: string;
+  group: string;
+  type: string;
+  runtime: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  schedule: Record<string, unknown>;
+  serviceUnit: string;
+  timerUnit: string;
+  servicePath: string;
+  timerPath: string;
+}
+
+export function createSchedule(options: CreateScheduleOptions): Promise<CreateScheduleResult>;
+export function listSchedules(group?: string): Promise<ScheduleStatus[]>;
+export function getScheduleStatus(name: string): Promise<ScheduleStatus>;
+export function runSchedule(name: string): Promise<boolean>;
+export function enableSchedule(name: string): Promise<boolean>;
+export function disableSchedule(name: string): Promise<boolean>;
+export function removeSchedule(name: string, options?: { force?: boolean }): Promise<boolean>;
+export function validateCalendar(expression: string): Promise<{ valid: boolean; error?: string; warning?: string }>;
+export function validateDuration(val: string | number, paramName?: string): string;
+export function getTimerFilename(name: string): string;
+export function getTimerPath(name: string): string;
+export function timerFileExists(name: string): boolean;
+export function readScheduleMetadata(name: string): ScheduleMetadata | null;
+export function getScheduleMetadataPath(name: string): string;
+export function getSchedulesDir(): string;
+

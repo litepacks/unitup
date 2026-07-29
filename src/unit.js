@@ -4,12 +4,16 @@ import os from 'node:os';
 import {
   sanitizeServiceName,
   getUnitFilename,
+  getTimerFilename,
   getServiceNameFromUnit,
   formatSystemdEnv,
   escapeExecArg,
   resolveAbsolutePath,
   saveAppMetadata,
-  deleteAppMetadata
+  deleteAppMetadata,
+  saveScheduleMetadata,
+  deleteScheduleMetadata,
+  validateDuration
 } from './utils.js';
 
 /**
@@ -258,3 +262,218 @@ export function parseUnitContent(content) {
 
   return result;
 }
+
+/**
+ * Returns the full file path for a given timer unit.
+ * @param {string} name
+ * @returns {string}
+ */
+export function getTimerPath(name) {
+  const filename = getTimerFilename(name);
+  return path.join(getUserUnitDir(), filename);
+}
+
+/**
+ * Checks if a timer unit file exists for the given schedule name.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function timerFileExists(name) {
+  const timerPath = getTimerPath(name);
+  return fs.existsSync(timerPath);
+}
+
+/**
+ * Generates systemd service unit content for a scheduled oneshot task.
+ * @param {Object} opts
+ * @returns {string}
+ */
+export function generateScheduleServiceContent(opts) {
+  const safeName = sanitizeServiceName(opts.name);
+  let commandExec = '';
+  let execArgs = [];
+
+  if (opts.command) {
+    commandExec = resolveAbsolutePath(opts.command);
+    execArgs = Array.isArray(opts.args) ? [...opts.args] : [];
+  } else if (opts.script) {
+    const scriptPath = resolveAbsolutePath(opts.script);
+    commandExec = opts.nodePath ? resolveAbsolutePath(opts.nodePath) : process.execPath;
+    execArgs = [scriptPath, ...(Array.isArray(opts.args) ? opts.args : [])];
+  } else {
+    throw new Error('Either "command" or "script" must be provided to generate scheduled unit file.');
+  }
+
+  const scriptOrCmdPath = opts.script ? resolveAbsolutePath(opts.script) : (execArgs[0] && (execArgs[0].startsWith('/') || execArgs[0].startsWith('./')) ? resolveAbsolutePath(execArgs[0]) : commandExec);
+  const cwd = opts.cwd ? resolveAbsolutePath(opts.cwd) : path.dirname(scriptOrCmdPath || commandExec);
+
+  const execStartTokens = [commandExec, ...execArgs];
+  const execStartLine = execStartTokens.map(escapeExecArg).join(' ');
+
+  const binDir = path.dirname(commandExec);
+  const defaultPath = [binDir, '/usr/local/bin', '/usr/bin', '/bin']
+    .filter((p, i, self) => p && self.indexOf(p) === i)
+    .join(':');
+
+  const serviceLines = [
+    '[Unit]',
+    `Description=unitup scheduled task: ${safeName}`,
+    'After=network.target',
+    '',
+    '[Service]',
+    'Type=oneshot',
+    `SyslogIdentifier=unitup-${safeName}`,
+    `WorkingDirectory=${cwd}`,
+    `ExecStart=${execStartLine}`,
+    'StandardOutput=journal',
+    'StandardError=journal'
+  ];
+
+  const memHigh = opts.memoryHigh || opts.resources?.memoryHigh;
+  const memMax = opts.memoryMax || opts.resources?.memoryMax;
+  const memSwapMax = opts.memorySwapMax || opts.resources?.memorySwapMax;
+
+  if (memHigh || memMax || memSwapMax) {
+    serviceLines.push('MemoryAccounting=yes');
+    if (memHigh) serviceLines.push(`MemoryHigh=${memHigh}`);
+    if (memMax) serviceLines.push(`MemoryMax=${memMax}`);
+    if (memSwapMax) serviceLines.push(`MemorySwapMax=${memSwapMax}`);
+  }
+
+  const envObj = opts.env && typeof opts.env === 'object' ? { ...opts.env } : {};
+  if (!envObj.PATH) {
+    envObj.PATH = defaultPath;
+  }
+
+  if (opts.envFile) {
+    const absEnvFile = resolveAbsolutePath(opts.envFile);
+    serviceLines.push(`EnvironmentFile=${absEnvFile}`);
+  }
+
+  for (const [key, val] of Object.entries(envObj)) {
+    serviceLines.push(`Environment=${formatSystemdEnv(key, val)}`);
+  }
+
+  serviceLines.push('');
+  return serviceLines.join('\n');
+}
+
+/**
+ * Generates systemd timer unit content.
+ * @param {Object} opts
+ * @returns {string}
+ */
+export function generateTimerContent(opts) {
+  const safeName = sanitizeServiceName(opts.name);
+
+  const timerLines = [
+    '[Unit]',
+    `Description=unitup timer: ${safeName}`,
+    '',
+    '[Timer]'
+  ];
+
+  if (opts.every) {
+    const validEvery = validateDuration(opts.every, '--every');
+    const onActive = opts.onActive ? validateDuration(opts.onActive, '--on-active') : validEvery;
+    timerLines.push(`OnActiveSec=${onActive}`);
+    timerLines.push(`OnUnitActiveSec=${validEvery}`);
+  } else if (opts.onActive) {
+    const validActive = validateDuration(opts.onActive, '--on-active');
+    timerLines.push(`OnActiveSec=${validActive}`);
+  }
+
+  if (opts.calendar) {
+    if (typeof opts.calendar !== 'string' || !opts.calendar.trim()) {
+      throw new Error('Calendar expression cannot be empty.');
+    }
+    timerLines.push(`OnCalendar=${opts.calendar.trim()}`);
+  }
+
+  if (opts.onBoot) {
+    const validBoot = validateDuration(opts.onBoot, '--on-boot');
+    timerLines.push(`OnBootSec=${validBoot}`);
+  }
+
+  if (opts.randomDelay) {
+    const validDelay = validateDuration(opts.randomDelay, '--random-delay');
+    timerLines.push(`RandomizedDelaySec=${validDelay}`);
+  }
+
+  if (opts.persistent) {
+    timerLines.push('Persistent=true');
+  }
+
+  const serviceFilename = getUnitFilename(safeName);
+  timerLines.push(`Unit=${serviceFilename}`);
+
+  timerLines.push('', '[Install]', 'WantedBy=timers.target', '');
+
+  return timerLines.join('\n');
+}
+
+/**
+ * Creates or updates systemd service and timer files for a schedule on disk.
+ * @param {Object} opts
+ * @returns {{ servicePath: string, timerPath: string, serviceContent: string, timerContent: string }}
+ */
+export function writeScheduleUnitFiles(opts) {
+  const safeName = sanitizeServiceName(opts.name);
+  const unitDir = getUserUnitDir();
+
+  if (!fs.existsSync(unitDir)) {
+    fs.mkdirSync(unitDir, { recursive: true });
+  }
+
+  const servicePath = getUnitPath(safeName);
+  const timerPath = getTimerPath(safeName);
+
+  const serviceContent = generateScheduleServiceContent({ ...opts, name: safeName });
+  const timerContent = generateTimerContent({ ...opts, name: safeName });
+
+  fs.writeFileSync(servicePath, serviceContent, 'utf8');
+  fs.writeFileSync(timerPath, timerContent, 'utf8');
+
+  saveScheduleMetadata({
+    name: safeName,
+    group: opts.group || 'default',
+    runtime: opts.runtime || 'node',
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    schedule: {
+      every: opts.every || null,
+      calendar: opts.calendar || null,
+      onBoot: opts.onBoot || null,
+      onActive: opts.onActive || null,
+      persistent: Boolean(opts.persistent),
+      randomDelay: opts.randomDelay || null
+    }
+  });
+
+  return { servicePath, timerPath, serviceContent, timerContent };
+}
+
+/**
+ * Removes service, timer, and metadata files for a schedule.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function deleteScheduleUnitFiles(name) {
+  const safeName = sanitizeServiceName(name);
+  deleteScheduleMetadata(safeName);
+  const servicePath = getUnitPath(safeName);
+  const timerPath = getTimerPath(safeName);
+
+  let removed = false;
+  if (fs.existsSync(timerPath)) {
+    fs.unlinkSync(timerPath);
+    removed = true;
+  }
+  if (fs.existsSync(servicePath)) {
+    fs.unlinkSync(servicePath);
+    removed = true;
+  }
+  return removed;
+}
+

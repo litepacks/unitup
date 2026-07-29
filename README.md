@@ -85,7 +85,7 @@ At its core, `unitup` generates systemd service unit files directly from a gener
 - 🧠 **Systemd-Native Memory Limits** — Configure `MemoryHigh`, `MemoryMax`, and `MemorySwapMax` per service without extra monitoring daemons.
 - 📜 **Journald Log Maintenance** — Advanced log streaming with filters (`--since`, `--until`, `--priority`, `--grep`, `--boot`, `--json`) and journal maintenance (`disk-usage`, `rotate`, `vacuum`).
 - 🩺 **System readiness & runtime check** — `unitup doctor` verifies OS, systemd PID 1, systemctl user bus, cgroup v2 memory controller support, user lingering, and detected runtimes.
-- 📋 **Compact status & logs** — clean summary output from `systemctl show` and live `journalctl` streaming.
+- ⏰ **Systemd Timer-Based Scheduling** — Create native `.timer` systemd units (`unitup schedule`) with interval (`--every 30m`), calendar (`--calendar daily`), boot delay (`--on-boot`), random delay jitter (`--random-delay`), and missed execution persistence (`--persistent`) without background cron daemons or continuously running worker processes.
 - 📦 **Programmatic API** — imported directly into JavaScript and TypeScript applications.
 
 ---
@@ -130,6 +130,52 @@ unitup journal vacuum --files 10 --yes
 
 > [!NOTE]
 > `unitup journal vacuum` prompts for user confirmation before executing system-wide log cleanup unless `--yes` / `-y` or `--dry-run` is provided. If permissions are insufficient, `unitup` handles it gracefully without executing `sudo`.
+
+### Systemd Timer Schedules (`unitup schedule`)
+
+`unitup` allows you to schedule tasks completely via native systemd `.timer` units without running background daemons, cron services, or continuous worker loops.
+
+Each schedule creates a paired service (`~/.config/systemd/user/unitup-<name>.service`) with `Type=oneshot` and timer (`~/.config/systemd/user/unitup-<name>.timer`).
+
+```bash
+# Interval schedule (--every)
+unitup schedule cleanup.js --every 30m --persistent --start
+
+# Calendar schedule (--calendar)
+unitup schedule backup.py --calendar daily --random-delay 10m --persistent --start
+
+# Complex calendar expression
+unitup schedule report.js --calendar "Mon..Fri 09:00" --start
+
+# List all active schedule timers
+unitup schedules   # or unitup timers
+
+# Detailed schedule status
+unitup schedule-status cleanup   # or unitup timer-status cleanup
+
+# Manually run the schedule service once (leaves timer schedule unchanged)
+unitup schedule-run cleanup
+
+# Enable or disable schedule timers
+unitup schedule-enable cleanup
+unitup schedule-disable cleanup
+
+# Remove schedule timer, service unit, and metadata
+unitup schedule-remove cleanup [--force]
+
+# Read scheduled task logs
+unitup schedule-logs cleanup
+```
+
+#### Schedule Options
+
+- `--every <duration>`: Execution interval (e.g., `30s`, `10m`, `2h`, `1d`). Generates `OnActiveSec` and `OnUnitActiveSec`.
+- `--calendar <expression>`: Systemd calendar expression (e.g., `daily`, `weekly`, `"Mon..Fri 09:00"`). Validated via `systemd-analyze calendar`.
+- `--on-boot <duration>`: Delay execution relative to system boot (e.g., `5m`).
+- `--on-active <duration>`: Delay execution relative to timer activation.
+- `--random-delay <duration>`: Adds a randomized delay jitter to prevent simultaneous job stampedes (e.g., `10m`).
+- `--persistent`: Sets `Persistent=true` so systemd executes missed schedules immediately after system boot or wake.
+- `--start`: Automatically enables and starts the timer unit after creation (`systemctl --user enable --now`).
 
 ---
 
@@ -525,15 +571,62 @@ await createService({
 ```js
 const {
   createService,
-  startService,
-  getServiceStatus
+  createSchedule,
+  listSchedules
 } = require("unitup");
 
-await createService({
-  name: "api",
-  script: "./server.js",
+await createSchedule({
+  name: "cleanup",
+  script: "./cleanup.js",
+  every: "30m",
   start: true
 });
+```
+
+### Programmatic Schedule API Example
+
+```ts
+import {
+  createSchedule,
+  listSchedules,
+  getScheduleStatus,
+  runSchedule,
+  enableSchedule,
+  disableSchedule,
+  removeSchedule
+} from "unitup";
+
+// Create an interval schedule
+await createSchedule({
+  name: "cleanup",
+  script: "./cleanup.js",
+  runtime: "node",
+  every: "30m",
+  persistent: true,
+  start: true
+});
+
+// Create a calendar schedule with random delay jitter
+await createSchedule({
+  name: "backup",
+  script: "./backup.py",
+  runtime: "python",
+  calendar: "daily",
+  randomDelay: "10m",
+  persistent: true,
+  start: true
+});
+
+// List all active schedules
+const schedules = await listSchedules();
+console.log(schedules);
+
+// Manually trigger a schedule run
+await runSchedule("cleanup");
+
+// Disable and remove schedule
+await disableSchedule("cleanup");
+await removeSchedule("cleanup");
 ```
 
 ### Script & Runtime Example

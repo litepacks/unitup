@@ -402,3 +402,169 @@ export function formatTable(data, columns) {
 
   return lines.join('\n');
 }
+
+/**
+ * Returns the directory for schedule metadata (~/.config/unitup/schedules).
+ * @returns {string}
+ */
+export function getSchedulesDir() {
+  return path.join(getUnitupDir(), 'schedules');
+}
+
+/**
+ * Returns the filepath for a specific schedule's metadata JSON file.
+ * @param {string} name
+ * @returns {string}
+ */
+export function getScheduleMetadataPath(name) {
+  const safeName = sanitizeServiceName(name);
+  return path.join(getSchedulesDir(), `${safeName}.json`);
+}
+
+/**
+ * Saves metadata JSON for a schedule.
+ * @param {object} meta
+ * @returns {object}
+ */
+export function saveScheduleMetadata(meta) {
+  const safeName = sanitizeServiceName(meta.name);
+  const dir = getSchedulesDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const filePath = getScheduleMetadataPath(safeName);
+
+  const command = meta.command ? resolveAbsolutePath(meta.command) : process.execPath;
+  const rawArgs = Array.isArray(meta.args) ? meta.args : [];
+  const args = rawArgs.map(a => (a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/')) ? resolveAbsolutePath(a) : a);
+
+  const payload = {
+    name: safeName,
+    group: meta.group || 'default',
+    type: 'timer',
+    runtime: meta.runtime || 'node',
+    command,
+    args,
+    cwd: meta.cwd ? resolveAbsolutePath(meta.cwd) : process.cwd(),
+    schedule: {
+      every: meta.schedule?.every || null,
+      calendar: meta.schedule?.calendar || null,
+      onBoot: meta.schedule?.onBoot || null,
+      onActive: meta.schedule?.onActive || null,
+      persistent: Boolean(meta.schedule?.persistent),
+      randomDelay: meta.schedule?.randomDelay || null
+    },
+    serviceUnit: `unitup-${safeName}.service`,
+    timerUnit: `unitup-${safeName}.timer`
+  };
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf8');
+  return payload;
+}
+
+/**
+ * Reads metadata JSON for a schedule.
+ * @param {string} name
+ * @returns {object|null}
+ */
+export function readScheduleMetadata(name) {
+  try {
+    const filePath = getScheduleMetadataPath(name);
+    if (!fs.existsSync(filePath)) return null;
+    const content = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Deletes metadata JSON for a schedule if it exists.
+ * @param {string} name
+ * @returns {boolean}
+ */
+export function deleteScheduleMetadata(name) {
+  try {
+    const filePath = getScheduleMetadataPath(name);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+/**
+ * Returns the full systemd timer filename for a schedule name.
+ * @param {string} name
+ * @returns {string}
+ */
+export function getTimerFilename(name) {
+  const safeName = sanitizeServiceName(name);
+  return `unitup-${safeName}.timer`;
+}
+
+/**
+ * Validates systemd time span duration strings (e.g., 30s, 10m, 2h, 1d).
+ * @param {string|number} val
+ * @param {string} [paramName]
+ * @returns {string}
+ */
+export function validateDuration(val, paramName = 'Duration') {
+  if (val === null || val === undefined || val === '') {
+    throw new Error(`${paramName} cannot be empty.`);
+  }
+
+  const str = String(val).trim();
+
+  // Prevent shell injection and unsafe characters
+  if (/[;&|$`"'\n\r\t]/.test(str)) {
+    throw new Error(`${paramName} contains invalid characters or shell injection attempt: "${str}".`);
+  }
+
+  // Reject negative numbers
+  if (str.startsWith('-')) {
+    throw new Error(`${paramName} cannot be negative: "${str}".`);
+  }
+
+  const tokens = str.split(/\s+/);
+  const tokenRegex = /^(\d+(?:\.\d+)?)(us|usec|ms|msec|s|sec|seconds?|m|min|minutes?|h|hr|hours?|d|day|days?|w|week|weeks?|mth|months?|y|year|years?)$/i;
+
+  for (const token of tokens) {
+    if (!tokenRegex.test(token)) {
+      throw new Error(`Invalid ${paramName} format: "${str}". Expected values like 30s, 10m, 2h, 1d.`);
+    }
+  }
+
+  return str;
+}
+
+/**
+ * Formats a future date/timestamp into relative human readable string (e.g. "in 12 minutes", "tomorrow").
+ * @param {string|number|Date} dateVal
+ * @returns {string}
+ */
+export function formatFutureTime(dateVal) {
+  if (!dateVal || dateVal === 'n/a' || dateVal === '0' || dateVal === 'infinity') {
+    return 'n/a';
+  }
+  const date = new Date(typeof dateVal === 'number' && dateVal > 1e12 ? dateVal : (typeof dateVal === 'number' ? dateVal / 1000 : dateVal));
+  if (isNaN(date.getTime())) {
+    return String(dateVal);
+  }
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) return 'imminent';
+
+  const seconds = Math.floor(diffMs / 1000);
+  if (seconds < 60) return `in ${seconds} seconds`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `in ${minutes} minute${minutes === 1 ? '' : 's'}`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `in ${hours} hour${hours === 1 ? '' : 's'}`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'tomorrow';
+  return `in ${days} days`;
+}
+

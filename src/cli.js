@@ -21,6 +21,15 @@ import {
   setServiceLimits,
   executeJournalctlMaintenance
 } from './systemd.js';
+import {
+  createSchedule,
+  listSchedules,
+  getScheduleStatus,
+  runSchedule,
+  enableSchedule,
+  disableSchedule,
+  removeSchedule
+} from './schedule.js';
 import { sanitizeServiceName, formatTable } from './utils.js';
 
 /**
@@ -69,7 +78,13 @@ export function parseArgs(argv) {
       time: '',
       files: '',
       yes: false,
-      dryRun: false
+      dryRun: false,
+      every: '',
+      calendar: '',
+      onBoot: '',
+      onActive: '',
+      randomDelay: '',
+      persistent: false
     }
   };
 
@@ -255,6 +270,39 @@ export function parseArgs(argv) {
     } else if (arg === '--dry-run') {
       result.flags.dryRun = true;
       i++;
+    } else if (arg === '--every') {
+      result.flags.every = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--every=')) {
+      result.flags.every = arg.slice(8);
+      i++;
+    } else if (arg === '--calendar') {
+      result.flags.calendar = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--calendar=')) {
+      result.flags.calendar = arg.slice(11);
+      i++;
+    } else if (arg === '--on-boot') {
+      result.flags.onBoot = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--on-boot=')) {
+      result.flags.onBoot = arg.slice(10);
+      i++;
+    } else if (arg === '--on-active') {
+      result.flags.onActive = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--on-active=')) {
+      result.flags.onActive = arg.slice(12);
+      i++;
+    } else if (arg === '--random-delay') {
+      result.flags.randomDelay = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--random-delay=')) {
+      result.flags.randomDelay = arg.slice(15);
+      i++;
+    } else if (arg === '--persistent') {
+      result.flags.persistent = true;
+      i++;
     } else if (!arg.startsWith('-')) {
       if (!result.command) {
         result.command = arg;
@@ -288,24 +336,30 @@ Usage:
   unitup remove <name|@group>   Stop, disable and delete a service
   unitup list / unitup ls       List all services (--group <group>)
 
-Add Options:
-  --name <name>          Service name (default: script/executable name)
-  --runtime <name>       Runtime (node, python, ruby, php, bun, deno, shell, go, elixir, native)
-  --runtime-arg <val>    Runtime argument (can be specified multiple times)
-  --command <path>       Custom executable command path (bypasses auto-detection)
-  --arg <value>          Argument to pass to command (can be specified multiple times)
-  --group <group>        Assign service to a group (default: default)
-  --cwd <path>           Working directory
-  --restart <policy>     Restart policy (on-failure, always, etc. Default: on-failure)
-  --env KEY=value        Environment variable (can be specified multiple times)
-  --env-file <file>      Path to environment file
-  --start                Enable and start service immediately after creation
+Schedule Commands:
+  unitup schedule <script> [options] Create a systemd timer schedule
+  unitup schedules / unitup timers    List all schedule timers
+  unitup schedule-status <name>       Show detailed schedule timer status
+  unitup schedule-run <name>          Manually run schedule service unit once
+  unitup schedule-enable <name>       Enable and start schedule timer
+  unitup schedule-disable <name>      Disable and stop schedule timer
+  unitup schedule-remove <name>       Remove schedule timer and service
+  unitup schedule-logs <name>         View logs for a scheduled task
+
+Schedule Options:
+  --every <duration>     Execution interval (e.g., 30s, 10m, 2h, 1d)
+  --calendar <expr>      Calendar expression (e.g., daily, "Mon..Fri 09:00")
+  --on-boot <duration>   Delay relative to system boot (e.g., 5m)
+  --on-active <duration> Delay relative to timer activation
+  --random-delay <dur>   Random delay to prevent stampedes (e.g., 10m)
+  --persistent           Run immediately if a scheduled run was missed
+  --start                Enable and start timer immediately after creation
 
 Examples:
   unitup add server.js --runtime node
-  unitup add worker.py --runtime python
-  unitup add ./server --runtime native
-  unitup add --name worker --command /usr/bin/python3 --arg worker.py --arg --port --arg 3000
+  unitup schedule cleanup.js --every 30m --persistent --start
+  unitup schedule backup.py --calendar daily --random-delay 10m --start
+  unitup schedule report.js --calendar "Mon..Fri 09:00" --start
 `);
 }
 
@@ -653,6 +707,156 @@ export async function runCli(argv = process.argv.slice(2)) {
           { key: 'uptime', label: 'UPTIME' }
         ]);
         console.log(table);
+        break;
+      }
+
+      case 'schedule': {
+        const scriptArg = positionals[0];
+        const envObj = {};
+        for (const e of flags.env) {
+          const idx = e.indexOf('=');
+          if (idx !== -1) {
+            envObj[e.slice(0, idx)] = e.slice(idx + 1);
+          } else {
+            envObj[e] = '';
+          }
+        }
+
+        const res = await createSchedule({
+          name: flags.name,
+          script: scriptArg,
+          command: flags.command,
+          runtime: flags.runtime,
+          runtimeArgs: flags.runtimeArgs,
+          args: flags.args,
+          cwd: flags.cwd,
+          env: envObj,
+          envFile: flags.envFile,
+          group: flags.group,
+          every: flags.every,
+          calendar: flags.calendar,
+          onBoot: flags.onBoot,
+          onActive: flags.onActive,
+          randomDelay: flags.randomDelay,
+          persistent: flags.persistent,
+          start: flags.start || flags.enable,
+          enable: flags.enable
+        });
+
+        console.log(`✓ Schedule "${res.name}" created.`);
+        console.log(`Service unit: ${res.servicePath}`);
+        console.log(`Timer unit: ${res.timerPath}`);
+        if (flags.start || flags.enable) {
+          console.log(`✓ Timer "${res.name}" enabled and started.`);
+        } else {
+          console.log(`Run "unitup schedule-enable ${res.name}" to enable and start the timer.`);
+        }
+        break;
+      }
+
+      case 'timers':
+      case 'schedules': {
+        const schedules = await listSchedules(flags.group);
+        if (schedules.length === 0) {
+          if (flags.group) {
+            console.log(`No schedules found in group "${flags.group}".`);
+          } else {
+            console.log('No unitup schedule timers found.');
+          }
+          break;
+        }
+
+        const table = formatTable(schedules, [
+          { key: 'name', label: 'NAME' },
+          { key: 'group', label: 'GROUP' },
+          { key: 'schedule', label: 'SCHEDULE' },
+          { key: 'nextRun', label: 'NEXT RUN' },
+          { key: 'lastRun', label: 'LAST RUN' },
+          { key: 'status', label: 'STATUS' }
+        ]);
+        console.log(table);
+        break;
+      }
+
+      case 'timer-status':
+      case 'schedule-status': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Schedule name is required.\nExample: unitup schedule-status cleanup');
+        }
+        const status = await getScheduleStatus(nameArg);
+        console.log(`Name: ${status.name}`);
+        console.log(`Group: ${status.group}`);
+        console.log(`Schedule: ${status.schedule}`);
+        console.log(`Next Run: ${status.nextRun}`);
+        console.log(`Last Run: ${status.lastRun}`);
+        console.log(`Status: ${status.status}`);
+        console.log(`Timer Unit: ${status.timerUnit}`);
+        console.log(`Service Unit: ${status.serviceUnit}`);
+        break;
+      }
+
+      case 'schedule-run': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Schedule name is required.\nExample: unitup schedule-run cleanup');
+        }
+        await runSchedule(nameArg);
+        console.log(`✓ Service unit for schedule "${sanitizeServiceName(nameArg)}" triggered.`);
+        break;
+      }
+
+      case 'schedule-enable': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Schedule name is required.\nExample: unitup schedule-enable cleanup');
+        }
+        await enableSchedule(nameArg);
+        console.log(`✓ Schedule timer "${sanitizeServiceName(nameArg)}" enabled and started.`);
+        break;
+      }
+
+      case 'schedule-disable': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Schedule name is required.\nExample: unitup schedule-disable cleanup');
+        }
+        await disableSchedule(nameArg);
+        console.log(`✓ Schedule timer "${sanitizeServiceName(nameArg)}" disabled.`);
+        break;
+      }
+
+      case 'schedule-remove': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Schedule name is required.\nExample: unitup schedule-remove cleanup');
+        }
+        await removeSchedule(nameArg, { force: flags.force });
+        console.log(`✓ Schedule "${sanitizeServiceName(nameArg)}" removed.`);
+        break;
+      }
+
+      case 'schedule-logs': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Schedule name is required.\nExample: unitup schedule-logs cleanup');
+        }
+        const output = await runJournalctlLogs(nameArg, {
+          follow: flags.follow,
+          lines: flags.lines,
+          cat: flags.cat,
+          output: flags.output,
+          since: flags.since,
+          until: flags.until,
+          priority: flags.priority,
+          grep: flags.grep,
+          boot: flags.boot,
+          json: flags.json,
+          diskUsage: flags.diskUsage
+        });
+        if (typeof output === 'string') {
+          console.log(output);
+        }
         break;
       }
 

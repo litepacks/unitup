@@ -69,6 +69,7 @@
         <a href="#architecture" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 py-1">Architecture</a>
         <a href="#runtimes" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 py-1">Runtimes</a>
         <a href="#cli" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 py-1">CLI Reference</a>
+        <a href="#schedules" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 py-1">Schedules</a>
         <a href="#api" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 py-1">API</a>
         <a href="#declarative" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 py-1">Roadmap</a>
         <a href="#troubleshooting" class="text-slate-600 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 py-1">Lingering</a>
@@ -407,6 +408,58 @@ unitup journal vacuum --time 14d --dry-run</code></pre>
           <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Stops, disables, and deletes a service or group. Active running services require <code class="text-xs">--force</code> / <code class="text-xs">-f</code> to prevent accidental deletion.</p>
           <pre><code class="language-bash">unitup remove worker
 unitup remove @backend --force</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section: Schedules -->
+    <section id="schedules" class="doc-section mb-14">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">Systemd Timer Schedules</h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+        <strong class="text-slate-800 dark:text-slate-200">unitup</strong> supports native systemd timer scheduling without running continuous worker processes or cron daemons. Each schedule generates a paired oneshot service (<code class="text-cyan-700 dark:text-cyan-400">~/.config/systemd/user/unitup-&lt;name&gt;.service</code>) and timer unit (<code class="text-cyan-700 dark:text-cyan-400">~/.config/systemd/user/unitup-&lt;name&gt;.timer</code>).
+      </p>
+
+      <div class="space-y-6">
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2">CLI Schedule Commands</h3>
+          <pre><code class="language-bash"># Create interval schedule (--every 30m)
+unitup schedule cleanup.js --every 30m --persistent --start
+
+# Create calendar schedule (--calendar daily with random delay jitter)
+unitup schedule backup.py --calendar daily --random-delay 10m --persistent --start
+
+# Specific calendar expression
+unitup schedule report.js --calendar "Mon..Fri 09:00" --start
+
+# List all schedule timers
+unitup schedules   # or unitup timers
+
+# Detailed schedule status
+unitup schedule-status cleanup
+
+# Manually trigger schedule service unit once
+unitup schedule-run cleanup
+
+# Enable / Disable / Remove schedule
+unitup schedule-enable cleanup
+unitup schedule-disable cleanup
+unitup schedule-remove cleanup [--force]
+
+# Read schedule logs
+unitup schedule-logs cleanup</code></pre>
+        </div>
+
+        <div class="p-5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/50">
+          <h3 class="text-lg font-bold text-cyan-600 dark:text-cyan-400 mb-2">Schedule Options</h3>
+          <ul class="list-disc list-inside space-y-1.5 text-sm text-slate-600 dark:text-slate-400">
+            <li><code class="text-xs font-bold text-slate-800 dark:text-slate-200">--every &lt;duration&gt;</code>: Execution interval (e.g., <code class="text-xs">30s</code>, <code class="text-xs">10m</code>, <code class="text-xs">2h</code>, <code class="text-xs">1d</code>). Sets <code class="text-xs">OnActiveSec</code> and <code class="text-xs">OnUnitActiveSec</code>.</li>
+            <li><code class="text-xs font-bold text-slate-800 dark:text-slate-200">--calendar &lt;expression&gt;</code>: Systemd calendar expression (e.g., <code class="text-xs">daily</code>, <code class="text-xs">"Mon..Fri 09:00"</code>). Validated via <code class="text-xs">systemd-analyze calendar</code>.</li>
+            <li><code class="text-xs font-bold text-slate-800 dark:text-slate-200">--on-boot &lt;duration&gt;</code>: Delay execution relative to system boot (e.g., <code class="text-xs">5m</code>).</li>
+            <li><code class="text-xs font-bold text-slate-800 dark:text-slate-200">--on-active &lt;duration&gt;</code>: Delay execution relative to timer activation.</li>
+            <li><code class="text-xs font-bold text-slate-800 dark:text-slate-200">--random-delay &lt;duration&gt;</code>: Adds randomized delay jitter (<code class="text-xs">RandomizedDelaySec</code>).</li>
+            <li><code class="text-xs font-bold text-slate-800 dark:text-slate-200">--persistent</code>: Sets <code class="text-xs">Persistent=true</code> to execute missed schedules immediately after system wake/boot.</li>
+            <li><code class="text-xs font-bold text-slate-800 dark:text-slate-200">--start</code>: Enables and starts the timer unit immediately after creation.</li>
+          </ul>
         </div>
       </div>
     </section>
