@@ -13,7 +13,8 @@ import {
   deleteAppMetadata,
   saveScheduleMetadata,
   deleteScheduleMetadata,
-  validateDuration
+  validateDuration,
+  resolveEffectiveMemoryLimits
 } from './utils.js';
 
 /**
@@ -110,9 +111,10 @@ export function generateUnitContent(opts) {
     'StandardError=journal'
   ];
 
-  const memHigh = opts.memoryHigh || opts.resources?.memoryHigh;
-  const memMax = opts.memoryMax || opts.resources?.memoryMax;
-  const memSwapMax = opts.memorySwapMax || opts.resources?.memorySwapMax;
+  const effectiveLimits = resolveEffectiveMemoryLimits(opts);
+  const memHigh = effectiveLimits.memoryHigh;
+  const memMax = effectiveLimits.memoryMax;
+  const memSwapMax = effectiveLimits.memorySwapMax;
 
   if (memHigh || memMax || memSwapMax) {
     serviceLines.push('MemoryAccounting=yes');
@@ -329,9 +331,10 @@ export function generateScheduleServiceContent(opts) {
     'StandardError=journal'
   ];
 
-  const memHigh = opts.memoryHigh || opts.resources?.memoryHigh;
-  const memMax = opts.memoryMax || opts.resources?.memoryMax;
-  const memSwapMax = opts.memorySwapMax || opts.resources?.memorySwapMax;
+  const effectiveLimits = resolveEffectiveMemoryLimits(opts);
+  const memHigh = effectiveLimits.memoryHigh;
+  const memMax = effectiveLimits.memoryMax;
+  const memSwapMax = effectiveLimits.memorySwapMax;
 
   if (memHigh || memMax || memSwapMax) {
     serviceLines.push('MemoryAccounting=yes');
@@ -441,6 +444,10 @@ export function writeScheduleUnitFiles(opts) {
     command: opts.command,
     args: opts.args,
     cwd: opts.cwd,
+    memoryHigh: opts.memoryHigh || opts.resources?.memoryHigh,
+    memoryMax: opts.memoryMax || opts.resources?.memoryMax,
+    memorySwapMax: opts.memorySwapMax || opts.resources?.memorySwapMax,
+    resources: opts.resources,
     schedule: {
       every: opts.every || null,
       calendar: opts.calendar || null,

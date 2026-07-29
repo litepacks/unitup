@@ -53,6 +53,10 @@ import {
   getAppMetadataPath,
   readScheduleMetadata,
   getScheduleMetadataPath,
+  readGlobalConfig,
+  saveGlobalConfig,
+  getConfigFilepath,
+  resolveEffectiveMemoryLimits,
   getSchedulesDir,
   getAppsDir,
   getUnitupDir,
@@ -99,11 +103,15 @@ export {
   detectRuntime,
   resolveRuntimeConfig,
 
-  // Metadata helpers
+  // Metadata & Config helpers
   readAppMetadata,
   getAppMetadataPath,
   readScheduleMetadata,
   getScheduleMetadataPath,
+  readGlobalConfig,
+  saveGlobalConfig,
+  getConfigFilepath,
+  resolveEffectiveMemoryLimits,
   getSchedulesDir,
   getAppsDir,
   getUnitupDir,

@@ -438,6 +438,11 @@ export function saveScheduleMetadata(meta) {
   const rawArgs = Array.isArray(meta.args) ? meta.args : [];
   const args = rawArgs.map(a => (a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/')) ? resolveAbsolutePath(a) : a);
 
+  const resources = meta.resources || {};
+  if (meta.memoryHigh) resources.memoryHigh = validateMemorySize(meta.memoryHigh, 'MemoryHigh');
+  if (meta.memoryMax) resources.memoryMax = validateMemorySize(meta.memoryMax, 'MemoryMax');
+  if (meta.memorySwapMax) resources.memorySwapMax = validateMemorySize(meta.memorySwapMax, 'MemorySwapMax');
+
   const payload = {
     name: safeName,
     group: meta.group || 'default',
@@ -454,6 +459,7 @@ export function saveScheduleMetadata(meta) {
       persistent: Boolean(meta.schedule?.persistent),
       randomDelay: meta.schedule?.randomDelay || null
     },
+    ...(Object.keys(resources).length > 0 ? { resources } : {}),
     serviceUnit: `unitup-${safeName}.service`,
     timerUnit: `unitup-${safeName}.timer`
   };
@@ -567,4 +573,85 @@ export function formatFutureTime(dateVal) {
   if (days === 1) return 'tomorrow';
   return `in ${days} days`;
 }
+
+/**
+ * Returns the filepath to the global unitup config JSON file (~/.config/unitup/config.json).
+ * @returns {string}
+ */
+export function getConfigFilepath() {
+  return path.join(getUnitupDir(), 'config.json');
+}
+
+/**
+ * Reads global unitup configuration JSON file.
+ * @returns {object}
+ */
+export function readGlobalConfig() {
+  try {
+    const file = getConfigFilepath();
+    if (!fs.existsSync(file)) return {};
+    const content = fs.readFileSync(file, 'utf8');
+    return JSON.parse(content) || {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Saves global unitup configuration JSON file.
+ * @param {object} config
+ * @returns {object}
+ */
+export function saveGlobalConfig(config) {
+  const dir = getUnitupDir();
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  const file = getConfigFilepath();
+  const current = readGlobalConfig();
+  const updated = { ...current, ...config };
+  fs.writeFileSync(file, JSON.stringify(updated, null, 2), 'utf8');
+  return updated;
+}
+
+/**
+ * Resolves effective memory limits considering explicit options, env vars, and global config defaults (default: 1G).
+ * @param {object} opts
+ * @returns {{ memoryHigh?: string, memoryMax?: string, memorySwapMax?: string }}
+ */
+export function resolveEffectiveMemoryLimits(opts = {}) {
+  const memHigh = opts.memoryHigh || opts.resources?.memoryHigh;
+  const memMax = opts.memoryMax || opts.resources?.memoryMax;
+  const memSwapMax = opts.memorySwapMax || opts.resources?.memorySwapMax;
+
+  if (memHigh || memMax || memSwapMax) {
+    return {
+      ...(memHigh ? { memoryHigh: validateMemorySize(memHigh, 'MemoryHigh') } : {}),
+      ...(memMax ? { memoryMax: validateMemorySize(memMax, 'MemoryMax') } : {}),
+      ...(memSwapMax ? { memorySwapMax: validateMemorySize(memSwapMax, 'MemorySwapMax') } : {})
+    };
+  }
+
+  let defaultMem = opts.defaultMemory;
+
+  if (!defaultMem && process.env.UNITUP_DEFAULT_MEMORY) {
+    defaultMem = process.env.UNITUP_DEFAULT_MEMORY;
+  }
+
+  if (!defaultMem) {
+    const cfg = readGlobalConfig();
+    if (cfg.defaultMemory) {
+      defaultMem = cfg.defaultMemory;
+    }
+  }
+
+  if (defaultMem) {
+    const sizeStr = (typeof defaultMem === 'boolean' || defaultMem === 'true' || defaultMem === '') ? '1G' : String(defaultMem);
+    const validSize = validateMemorySize(sizeStr, 'Default memory limit');
+    return { memoryMax: validSize };
+  }
+
+  return {};
+}
+
 

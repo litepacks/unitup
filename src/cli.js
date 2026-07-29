@@ -30,7 +30,7 @@ import {
   disableSchedule,
   removeSchedule
 } from './schedule.js';
-import { sanitizeServiceName, formatTable } from './utils.js';
+import { sanitizeServiceName, formatTable, readGlobalConfig, saveGlobalConfig, validateMemorySize } from './utils.js';
 
 /**
  * Custom light CLI argument parser without runtime dependencies.
@@ -67,6 +67,8 @@ export function parseArgs(argv) {
       memoryMax: '',
       memorySwapMax: '',
       resetMemory: false,
+      defaultMemory: '',
+      resetDefaultMemory: false,
       since: '',
       until: '',
       priority: '',
@@ -213,6 +215,21 @@ export function parseArgs(argv) {
     } else if (arg === '--reset-memory') {
       result.flags.resetMemory = true;
       i++;
+    } else if (arg === '--default-memory') {
+      const next = argv[i + 1];
+      if (next && !next.startsWith('-')) {
+        result.flags.defaultMemory = next;
+        i += 2;
+      } else {
+        result.flags.defaultMemory = '1G';
+        i++;
+      }
+    } else if (arg.startsWith('--default-memory=')) {
+      result.flags.defaultMemory = arg.slice(17) || '1G';
+      i++;
+    } else if (arg === '--reset-default-memory') {
+      result.flags.resetDefaultMemory = true;
+      i++;
     } else if (arg === '--since') {
       result.flags.since = argv[i + 1] || '';
       i += 2;
@@ -335,6 +352,7 @@ Usage:
   unitup failures               List all failed services with exit code & restarts
   unitup remove <name|@group>   Stop, disable and delete a service
   unitup list / unitup ls       List all services (--group <group>)
+  unitup config                 Manage global configuration (--default-memory 1G)
 
 Schedule Commands:
   unitup schedule <script> [options] Create a systemd timer schedule
@@ -346,6 +364,11 @@ Schedule Commands:
   unitup schedule-remove <name>       Remove schedule timer and service
   unitup schedule-logs <name>         View logs for a scheduled task
 
+Memory Options:
+  --memory-high <size>   Soft memory limit (e.g. 400M, 1G)
+  --memory-max <size>    Hard memory limit (e.g. 512M, 1G)
+  --default-memory [sz]  Apply default memory limit (defaults to 1G)
+
 Schedule Options:
   --every <duration>     Execution interval (e.g., 30s, 10m, 2h, 1d)
   --calendar <expr>      Calendar expression (e.g., daily, "Mon..Fri 09:00")
@@ -356,8 +379,9 @@ Schedule Options:
   --start                Enable and start timer immediately after creation
 
 Examples:
-  unitup add server.js --runtime node
-  unitup schedule cleanup.js --every 30m --persistent --start
+  unitup add server.js --runtime node --default-memory 1G
+  unitup config --default-memory 1G
+  unitup schedule cleanup.js --every 30m --default-memory --start
   unitup schedule backup.py --calendar daily --random-delay 10m --start
   unitup schedule report.js --calendar "Mon..Fri 09:00" --start
 `);
@@ -471,6 +495,7 @@ export async function runCli(argv = process.argv.slice(2)) {
           memoryHigh: flags.memoryHigh,
           memoryMax: flags.memoryMax,
           memorySwapMax: flags.memorySwapMax,
+          defaultMemory: flags.defaultMemory,
           force: flags.force
         });
 
@@ -733,6 +758,10 @@ export async function runCli(argv = process.argv.slice(2)) {
           env: envObj,
           envFile: flags.envFile,
           group: flags.group,
+          memoryHigh: flags.memoryHigh,
+          memoryMax: flags.memoryMax,
+          memorySwapMax: flags.memorySwapMax,
+          defaultMemory: flags.defaultMemory,
           every: flags.every,
           calendar: flags.calendar,
           onBoot: flags.onBoot,
@@ -856,6 +885,21 @@ export async function runCli(argv = process.argv.slice(2)) {
         });
         if (typeof output === 'string') {
           console.log(output);
+        }
+        break;
+      }
+
+      case 'config': {
+        if (flags.resetDefaultMemory) {
+          saveGlobalConfig({ defaultMemory: null });
+          console.log('✓ Default memory limit reset.');
+        } else if (flags.defaultMemory) {
+          const validSize = validateMemorySize(flags.defaultMemory, 'Default memory limit');
+          saveGlobalConfig({ defaultMemory: validSize });
+          console.log(`✓ Default memory limit set to ${validSize}.`);
+        } else {
+          const cfg = readGlobalConfig();
+          console.log(`Default Memory: ${cfg.defaultMemory || 'not set (1G on demand)'}`);
         }
         break;
       }

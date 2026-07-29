@@ -97,6 +97,11 @@ export interface CreateServiceOptions {
    * Swap memory limit directive (e.g. '256M').
    */
   memorySwapMax?: string;
+
+  /**
+   * Default memory limit fallback or request marker (defaults to '1G').
+   */
+  defaultMemory?: string | boolean;
 }
 
 /**
@@ -479,6 +484,10 @@ export interface CreateScheduleOptions {
   env?: Record<string, string> | string[];
   envFile?: string;
   group?: string;
+  memoryHigh?: string;
+  memoryMax?: string;
+  memorySwapMax?: string;
+  defaultMemory?: string | boolean;
   every?: string;
   calendar?: string;
   onBoot?: string;
@@ -555,4 +564,9 @@ export function timerFileExists(name: string): boolean;
 export function readScheduleMetadata(name: string): ScheduleMetadata | null;
 export function getScheduleMetadataPath(name: string): string;
 export function getSchedulesDir(): string;
+export function readGlobalConfig(): Record<string, unknown>;
+export function saveGlobalConfig(config: Record<string, unknown>): Record<string, unknown>;
+export function getConfigFilepath(): string;
+export function resolveEffectiveMemoryLimits(opts?: Record<string, unknown>): { memoryHigh?: string; memoryMax?: string; memorySwapMax?: string };
+
 

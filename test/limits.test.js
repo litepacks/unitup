@@ -154,6 +154,27 @@ describe('Systemd-Native Memory Limits Suite', () => {
     resetCommandRunner();
   });
 
+  test('resolveEffectiveMemoryLimits with defaultMemory 1GB', async () => {
+    const { resolveEffectiveMemoryLimits, saveGlobalConfig } = await import('../src/index.js');
+    
+    // Explicit limit overrides default
+    assert.deepEqual(resolveEffectiveMemoryLimits({ memoryMax: '512M', defaultMemory: '1G' }), { memoryMax: '512M' });
+
+    // Flag or parameter defaultMemory='1G'
+    assert.deepEqual(resolveEffectiveMemoryLimits({ defaultMemory: '1G' }), { memoryMax: '1G' });
+    assert.deepEqual(resolveEffectiveMemoryLimits({ defaultMemory: true }), { memoryMax: '1G' });
+
+    // Environment variable defaultMemory
+    process.env.UNITUP_DEFAULT_MEMORY = '1G';
+    assert.deepEqual(resolveEffectiveMemoryLimits({}), { memoryMax: '1G' });
+    delete process.env.UNITUP_DEFAULT_MEMORY;
+
+    // Global config defaultMemory
+    saveGlobalConfig({ defaultMemory: '1G' });
+    assert.deepEqual(resolveEffectiveMemoryLimits({}), { memoryMax: '1G' });
+    saveGlobalConfig({ defaultMemory: null });
+  });
+
   test('teardown test environment', () => {
     if (originalXdgConfig !== undefined) {
       process.env.XDG_CONFIG_HOME = originalXdgConfig;

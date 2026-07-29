@@ -262,3 +262,25 @@ test('Shell injection prevention in schedule arguments and names', async () => {
     /invalid characters or shell injection/
   );
 });
+
+test('createSchedule with memory limits', async () => {
+  const dummyScript = path.join(testDir, 'mem_job.js');
+  fs.writeFileSync(dummyScript, 'console.log("mem")', 'utf8');
+
+  await createSchedule({
+    name: 'mem-job',
+    script: dummyScript,
+    every: '1h',
+    memoryHigh: '256M',
+    memoryMax: '512M'
+  });
+
+  const serviceContent = fs.readFileSync(getUnitPath('mem-job'), 'utf8');
+  assert.match(serviceContent, /MemoryAccounting=yes/);
+  assert.match(serviceContent, /MemoryHigh=256M/);
+  assert.match(serviceContent, /MemoryMax=512M/);
+
+  const meta = readScheduleMetadata('mem-job');
+  assert.equal(meta.resources.memoryHigh, '256M');
+  assert.equal(meta.resources.memoryMax, '512M');
+});
