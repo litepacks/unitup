@@ -19,7 +19,9 @@ import {
   inspectService,
   getServiceFailures,
   setServiceLimits,
-  executeJournalctlMaintenance
+  executeJournalctlMaintenance,
+  getServiceMemoryUsage,
+  getAllServicesMemoryUsage
 } from './systemd.js';
 import {
   createSchedule,
@@ -352,6 +354,7 @@ Usage:
   unitup failures               List all failed services with exit code & restarts
   unitup remove <name|@group>   Stop, disable and delete a service
   unitup list / unitup ls       List all services (--group <group>)
+  unitup memory / unitup top    Show memory usage for all apps or a specific app
   unitup config                 Manage global configuration (--default-memory 1G)
 
 Schedule Commands:
@@ -900,6 +903,53 @@ export async function runCli(argv = process.argv.slice(2)) {
         } else {
           const cfg = readGlobalConfig();
           console.log(`Default Memory: ${cfg.defaultMemory || 'not set (1G on demand)'}`);
+        }
+        break;
+      }
+
+      case 'top':
+      case 'mem':
+      case 'memory': {
+        const nameArg = positionals[0];
+        if (nameArg) {
+          const targetNames = await resolveTargetNames(nameArg);
+          for (const name of targetNames) {
+            const mem = await getServiceMemoryUsage(name);
+            console.log(`=== Memory Overview: ${mem.name} ===`);
+            console.log(`Group: ${mem.group}`);
+            console.log(`Type: ${mem.type}`);
+            console.log(`Status: ${mem.status}`);
+            console.log(`PID: ${mem.pid}`);
+            console.log(`Current Memory: ${mem.memory}`);
+            console.log(`Peak Memory: ${mem.memoryPeak}`);
+            console.log(`Soft Limit (High): ${mem.memoryHigh}`);
+            console.log(`Hard Limit (Max): ${mem.memoryMax}`);
+            console.log(`Swap Limit: ${mem.memorySwapMax}`);
+            if (targetNames.length > 1) console.log('');
+          }
+        } else {
+          const overview = await getAllServicesMemoryUsage({ group: flags.group });
+          if (overview.items.length === 0) {
+            if (flags.group) {
+              console.log(`No services or schedules found in group "${flags.group}".`);
+            } else {
+              console.log('No unitup user services or schedules found.');
+            }
+            break;
+          }
+
+          const table = formatTable(overview.items, [
+            { key: 'name', label: 'NAME' },
+            { key: 'group', label: 'GROUP' },
+            { key: 'type', label: 'TYPE' },
+            { key: 'status', label: 'STATUS' },
+            { key: 'pid', label: 'PID' },
+            { key: 'memory', label: 'MEMORY' },
+            { key: 'memoryPeak', label: 'PEAK' },
+            { key: 'memoryMax', label: 'LIMIT (MAX)' }
+          ]);
+          console.log(table);
+          console.log(`\nTotal Memory Usage across ${overview.runningCount} active app(s): ${overview.totalMemory}`);
         }
         break;
       }

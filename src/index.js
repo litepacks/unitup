@@ -20,6 +20,8 @@ import {
   checkUserLinger,
   checkNodeDiagnostics,
   findNodeExecutable,
+  getServiceMemoryUsage,
+  getAllServicesMemoryUsage,
   setCommandRunner,
   resetCommandRunner
 } from './systemd.js';
@@ -81,6 +83,8 @@ export {
   getServiceFailures,
   getServicesByGroup,
   setServiceLimits,
+  getServiceMemoryUsage,
+  getAllServicesMemoryUsage,
   executeJournalctlMaintenance as executeJournalctlMaintenance,
   runJournalctlLogs as getServiceLogs,
 

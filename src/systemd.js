@@ -904,3 +904,129 @@ export async function executeJournalctlMaintenance(action, opts = {}) {
 
   return (res.stdout || res.stderr || 'Journal maintenance completed successfully.').trim();
 }
+
+/**
+ * Retrieves memory usage overview for a single service or schedule task.
+ *
+ * @param {string} name
+ * @returns {Promise<Object>}
+ */
+export async function getServiceMemoryUsage(name) {
+  const safeName = sanitizeServiceName(name);
+  const unitFilename = getUnitFilename(safeName);
+
+  const res = await runCommand('systemctl', [
+    '--user',
+    'show',
+    unitFilename,
+    '--property=ActiveState,SubState,MainPID,MemoryCurrent,MemoryPeak,MemoryHigh,MemoryMax,MemorySwapMax'
+  ]);
+
+  const props = {};
+  if (res.stdout) {
+    for (const line of res.stdout.split('\n')) {
+      const idx = line.indexOf('=');
+      if (idx > 0) {
+        props[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+      }
+    }
+  }
+
+  const { readScheduleMetadata } = await import('./utils.js');
+  const meta = readAppMetadata(safeName) || readScheduleMetadata(safeName);
+  const { formatMemoryBytes, resolveEffectiveMemoryLimits } = await import('./utils.js');
+
+  const effective = resolveEffectiveMemoryLimits(meta || {});
+
+  const memoryCurrentBytes = Number(props.MemoryCurrent);
+  const rawBytes = !isNaN(memoryCurrentBytes) && memoryCurrentBytes > 0 && memoryCurrentBytes < 1e15 ? memoryCurrentBytes : 0;
+
+  const status = props.ActiveState === 'active' ? (props.SubState === 'running' ? 'running' : props.SubState || 'active') : (props.ActiveState || 'stopped');
+
+  return {
+    name: safeName,
+    group: meta?.group || 'default',
+    type: meta?.type === 'timer' ? 'timer' : 'service',
+    status,
+    pid: props.MainPID && props.MainPID !== '0' ? props.MainPID : '-',
+    memoryBytes: rawBytes,
+    memory: formatMemoryBytes(props.MemoryCurrent),
+    memoryPeak: formatMemoryBytes(props.MemoryPeak),
+    memoryHigh: formatMemoryBytes(props.MemoryHigh || effective.memoryHigh),
+    memoryMax: formatMemoryBytes(props.MemoryMax || effective.memoryMax),
+    memorySwapMax: formatMemoryBytes(props.MemorySwapMax || effective.memorySwapMax)
+  };
+}
+
+/**
+ * Retrieves aggregated memory usage overview for all unitup services and schedules.
+ *
+ * @param {Object} [opts]
+ * @param {string} [opts.group]
+ * @returns {Promise<Object>}
+ */
+export async function getAllServicesMemoryUsage(opts = {}) {
+  const { formatMemoryBytes } = await import('./utils.js');
+  const services = await listServices({ group: opts.group });
+  const { listSchedules } = await import('./schedule.js');
+  const schedules = await listSchedules(opts.group);
+
+  const items = [];
+  let totalBytes = 0;
+  const processedNames = new Set();
+
+  for (const svc of services) {
+    processedNames.add(svc.name);
+    try {
+      const mem = await getServiceMemoryUsage(svc.name);
+      items.push({
+        name: svc.name,
+        group: svc.group || 'default',
+        type: 'service',
+        status: svc.status,
+        pid: svc.pid,
+        memory: mem.memory,
+        memoryPeak: mem.memoryPeak,
+        memoryMax: mem.memoryMax,
+        memoryHigh: mem.memoryHigh,
+        memoryBytes: mem.memoryBytes
+      });
+      totalBytes += mem.memoryBytes;
+    } catch {
+      // ignore
+    }
+  }
+
+  for (const sched of schedules) {
+    if (!processedNames.has(sched.name)) {
+      processedNames.add(sched.name);
+      try {
+        const mem = await getServiceMemoryUsage(sched.name);
+        items.push({
+          name: sched.name,
+          group: sched.group || 'default',
+          type: 'timer',
+          status: sched.status,
+          pid: mem.pid,
+          memory: mem.memory,
+          memoryPeak: mem.memoryPeak,
+          memoryMax: mem.memoryMax,
+          memoryHigh: mem.memoryHigh,
+          memoryBytes: mem.memoryBytes
+        });
+        totalBytes += mem.memoryBytes;
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const runningCount = items.filter(i => i.status === 'running' || i.status === 'active').length;
+
+  return {
+    items,
+    totalBytes,
+    totalMemory: formatMemoryBytes(totalBytes),
+    runningCount
+  };
+}

@@ -175,6 +175,41 @@ describe('Systemd-Native Memory Limits Suite', () => {
     saveGlobalConfig({ defaultMemory: null });
   });
 
+  test('getServiceMemoryUsage and getAllServicesMemoryUsage', async () => {
+    const { getServiceMemoryUsage, getAllServicesMemoryUsage, createService } = await import('../src/index.js');
+    const dummyScript = path.join(tmpDir, 'top_app.js');
+    fs.writeFileSync(dummyScript, 'console.log("top");');
+
+    setCommandRunner(async (cmd, args) => {
+      if (args.includes('show') && args.includes('unitup-top-app.service')) {
+        return {
+          stdout: 'ActiveState=active\nSubState=running\nMainPID=9999\nMemoryCurrent=524288000\nMemoryPeak=629145600\nMemoryMax=1073741824\n',
+          stderr: '',
+          code: 0
+        };
+      }
+      return { stdout: '', stderr: '', code: 0 };
+    });
+
+    await createService({
+      name: 'top-app',
+      script: dummyScript
+    });
+
+    const mem = await getServiceMemoryUsage('top-app');
+    assert.equal(mem.name, 'top-app');
+    assert.equal(mem.status, 'running');
+    assert.equal(mem.pid, '9999');
+    assert.equal(mem.memoryBytes, 524288000);
+    assert.equal(mem.memory, '500 MB');
+
+    const overview = await getAllServicesMemoryUsage();
+    assert.ok(overview.items.some(i => i.name === 'top-app'));
+    assert.ok(overview.totalBytes >= 524288000);
+
+    resetCommandRunner();
+  });
+
   test('teardown test environment', () => {
     if (originalXdgConfig !== undefined) {
       process.env.XDG_CONFIG_HOME = originalXdgConfig;

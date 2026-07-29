@@ -112,6 +112,32 @@ unitup limits api --reset-memory
 
 *Supported size units:* `128K`, `256M`, `1G`, `infinity`, `max`, or raw byte integers.
 
+### Memory Usage Overview (`unitup memory` / `unitup top`)
+
+```bash
+# View memory usage overview for all running services & schedules
+unitup top
+
+# Alias: unitup memory or unitup mem
+unitup memory
+
+# Filter memory overview by group
+unitup top --group backend
+
+# View detailed memory breakdown for a specific app
+unitup memory api
+```
+
+Example Output:
+```text
+NAME       GROUP      TYPE       STATUS     PID      MEMORY     PEAK       LIMIT (MAX)
+api        backend    service    running    14220    284 MB     361 MB     512 MB
+worker     backend    service    running    14302    120 MB     150 MB     1 GB
+cleanup    backend    timer      waiting    -        0 MB       unavailable 1 GB
+
+Total Memory Usage across 2 active app(s): 404 MB
+```
+
 ### Journald Log Maintenance
 
 ```bash

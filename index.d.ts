@@ -425,6 +425,36 @@ export function inspectService(name: string): Promise<InspectInfo>;
 export function getServiceFailures(): Promise<FailureItem[]>;
 export function getServicesByGroup(groupName: string): Promise<string[]>;
 export function setServiceLimits(name: string, options?: ServiceLimitsOptions): Promise<InspectInfo>;
+export function getServiceMemoryUsage(name: string): Promise<{
+  name: string;
+  group: string;
+  type: string;
+  status: string;
+  pid: string;
+  memoryBytes: number;
+  memory: string;
+  memoryPeak: string;
+  memoryHigh: string;
+  memoryMax: string;
+  memorySwapMax: string;
+}>;
+export function getAllServicesMemoryUsage(options?: { group?: string }): Promise<{
+  items: Array<{
+    name: string;
+    group: string;
+    type: string;
+    status: string;
+    pid: string;
+    memory: string;
+    memoryPeak: string;
+    memoryMax: string;
+    memoryHigh: string;
+    memoryBytes: number;
+  }>;
+  totalBytes: number;
+  totalMemory: string;
+  runningCount: number;
+}>;
 export function executeJournalctlMaintenance(action: string, options?: Record<string, unknown>): Promise<string>;
 export function getServiceLogs(name: string, options?: LogOptions): Promise<string | ChildProcess>;
 
