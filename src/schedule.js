@@ -6,6 +6,7 @@ import {
   getUnitFilename,
   getTimerFilename,
   resolveAbsolutePath,
+  resolveWorkingDirectory,
   validateDuration,
   formatFutureTime,
   formatRelativeTime,
@@ -125,11 +126,7 @@ export async function createSchedule(opts = {}) {
   const execArgs = resolved.args;
   const detectedRuntime = resolved.runtime;
 
-  const cwd = opts.cwd
-    ? resolveAbsolutePath(opts.cwd)
-    : scriptPath
-    ? path.dirname(scriptPath)
-    : process.cwd();
+  const cwd = resolveWorkingDirectory({ cwd: opts.cwd, script: scriptPath });
 
   const envObj = {};
   if (opts.env) {
@@ -173,6 +170,7 @@ export async function createSchedule(opts = {}) {
 
   if (opts.start || opts.enable) {
     await runCommand('systemctl', ['--user', 'daemon-reload']);
+    await runCommand('systemctl', ['--user', 'reset-failed', getUnitFilename(safeName), getTimerFilename(safeName)]);
     await runCommand('systemctl', ['--user', 'enable', getTimerFilename(safeName)]);
     await runCommand('systemctl', ['--user', 'start', getTimerFilename(safeName)]);
   }
@@ -212,6 +210,7 @@ export async function enableSchedule(name) {
     throw new Error(`Schedule timer unit up for "${name}" does not exist.`);
   }
   await runCommand('systemctl', ['--user', 'daemon-reload']);
+  await runCommand('systemctl', ['--user', 'reset-failed', getUnitFilename(safeName), getTimerFilename(safeName)]);
   const res = await runCommand('systemctl', ['--user', 'enable', '--now', getTimerFilename(safeName)]);
   return res.code === 0;
 }

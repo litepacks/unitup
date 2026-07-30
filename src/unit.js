@@ -9,6 +9,7 @@ import {
   formatSystemdEnv,
   escapeExecArg,
   resolveAbsolutePath,
+  resolveWorkingDirectory,
   saveAppMetadata,
   deleteAppMetadata,
   saveScheduleMetadata,
@@ -83,11 +84,7 @@ export function generateUnitContent(opts) {
     throw new Error('Either "command" or "script" must be provided to generate systemd unit file.');
   }
 
-  const cwd = opts.cwd
-    ? resolveAbsolutePath(opts.cwd)
-    : opts.script
-    ? path.dirname(resolveAbsolutePath(opts.script))
-    : process.cwd();
+  const cwd = resolveWorkingDirectory(opts);
   const restartPolicy = opts.restart || 'on-failure';
 
   const execStartTokens = [commandExec, ...execArgs];
@@ -309,11 +306,7 @@ export function generateScheduleServiceContent(opts) {
     throw new Error('Either "command" or "script" must be provided to generate scheduled unit file.');
   }
 
-  const cwd = opts.cwd
-    ? resolveAbsolutePath(opts.cwd)
-    : opts.script
-    ? path.dirname(resolveAbsolutePath(opts.script))
-    : process.cwd();
+  const cwd = resolveWorkingDirectory(opts);
 
   const execStartTokens = [commandExec, ...execArgs];
   const execStartLine = execStartTokens.map(escapeExecArg).join(' ');

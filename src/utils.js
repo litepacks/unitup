@@ -141,7 +141,7 @@ export function saveAppMetadata(meta) {
   const rawArgs = Array.isArray(meta.args) ? meta.args : (meta.script ? [meta.script] : []);
   const args = rawArgs.map(a => (a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/')) ? resolveAbsolutePath(a) : a);
   const scriptPath = meta.script ? resolveAbsolutePath(meta.script) : (args[0] ? resolveAbsolutePath(args[0]) : command);
-  const cwd = meta.cwd ? resolveAbsolutePath(meta.cwd) : (meta.script ? path.dirname(resolveAbsolutePath(meta.script)) : process.cwd());
+  const cwd = resolveWorkingDirectory(meta);
 
   // Extract memory resources if present
   const resources = meta.resources || {};
@@ -300,6 +300,31 @@ export function resolveAbsolutePath(filepath, baseDir = process.cwd()) {
     p = path.join(os.homedir(), p.slice(1));
   }
   return path.resolve(baseDir, p);
+}
+
+/**
+ * Safely resolves the working directory for a service or schedule unit.
+ *
+ * @param {Object} [opts]
+ * @returns {string}
+ */
+export function resolveWorkingDirectory(opts = {}) {
+  if (opts.cwd) {
+    return resolveAbsolutePath(opts.cwd);
+  }
+  if (opts.script) {
+    return path.dirname(resolveAbsolutePath(opts.script));
+  }
+  try {
+    const cwd = process.cwd();
+    if (fs.existsSync(cwd)) {
+      fs.accessSync(cwd, fs.constants.R_OK | fs.constants.X_OK);
+      return cwd;
+    }
+  } catch {
+    // fallback if process.cwd() is inaccessible
+  }
+  return os.homedir();
 }
 
 /**
