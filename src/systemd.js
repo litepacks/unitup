@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   sanitizeServiceName,
   getUnitFilename,
+  getTimerFilename,
   formatRelativeTime,
   readAppMetadata,
   readScheduleMetadata
@@ -605,14 +606,35 @@ export async function listServices(filterOpts = {}) {
       const unitFileState = show.UnitFileState || 'unknown';
 
       let status = 'stopped';
-      if (activeState === 'active' && subState === 'running') {
-        status = 'running';
-      } else if (activeState === 'failed') {
-        status = 'failed';
-      } else if (activeState === 'active') {
-        status = subState;
+      if (meta?.type === 'timer' || meta?.schedule) {
+        if (activeState === 'active' && subState === 'running') {
+          status = 'running';
+        } else if (activeState === 'failed') {
+          status = 'failed';
+        } else {
+          try {
+            const timerShow = await getServiceShow(getTimerFilename(unit.name));
+            if (timerShow.ActiveState === 'active') {
+              status = 'scheduled';
+            } else if (timerShow.UnitFileState === 'disabled' || timerShow.ActiveState === 'inactive') {
+              status = 'disabled';
+            } else {
+              status = 'scheduled';
+            }
+          } catch {
+            status = 'scheduled';
+          }
+        }
       } else {
-        status = 'stopped';
+        if (activeState === 'active' && subState === 'running') {
+          status = 'running';
+        } else if (activeState === 'failed') {
+          status = 'failed';
+        } else if (activeState === 'active') {
+          status = subState;
+        } else {
+          status = 'stopped';
+        }
       }
 
       const enabled = unitFileState.startsWith('enabled') ? 'yes' : 'no';
@@ -661,13 +683,29 @@ export async function inspectService(name) {
   const meta = readAppMetadata(safeName) || readScheduleMetadata(safeName);
   const statusObj = await getServiceStatus(safeName);
 
+  let inspectStatus = statusObj.status;
+  if ((meta?.type === 'timer' || meta?.schedule) && inspectStatus === 'stopped') {
+    try {
+      const timerShow = await getServiceShow(getTimerFilename(safeName));
+      if (timerShow.ActiveState === 'active') {
+        inspectStatus = 'scheduled';
+      } else if (timerShow.UnitFileState === 'disabled' || timerShow.ActiveState === 'inactive') {
+        inspectStatus = 'disabled';
+      } else {
+        inspectStatus = 'scheduled';
+      }
+    } catch {
+      inspectStatus = 'scheduled';
+    }
+  }
+
   const command = meta?.command || statusObj.command || statusObj.node || process.execPath;
   const argsList = meta?.args || (statusObj.script ? [statusObj.script] : []);
 
   return {
     name: safeName,
     runtime: meta?.runtime || 'node',
-    status: statusObj.status,
+    status: inspectStatus,
     activeState: statusObj.activeState,
     subState: statusObj.subState,
     command,
