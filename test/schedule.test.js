@@ -300,3 +300,20 @@ test('createSchedule with command uses process.cwd as WorkingDirectory fallback'
   assert.equal(meta.runtime, 'custom');
 });
 
+test('readScheduleMetadata normalizes legacy metadata with node runtime for custom command', async () => {
+  const schedulesDir = path.join(mockConfigDir, 'schedules');
+  if (!fs.existsSync(schedulesDir)) {
+    fs.mkdirSync(schedulesDir, { recursive: true });
+  }
+  const legacyMetaPath = path.join(schedulesDir, 'legacy-cmd.json');
+  fs.writeFileSync(legacyMetaPath, JSON.stringify({
+    name: 'legacy-cmd',
+    command: '/bin/bash',
+    runtime: 'node'
+  }), 'utf8');
+
+  const meta = readScheduleMetadata('legacy-cmd');
+  assert.ok(meta);
+  assert.equal(meta.runtime, 'custom');
+});
+

@@ -108,11 +108,14 @@ export function parseArgs(argv) {
     } else if (arg.startsWith('--runtime=')) {
       result.flags.runtime = arg.slice(10);
       i++;
-    } else if (arg === '--runtime-arg') {
+    } else if (arg === '--runtime-arg' || arg === '--runtime-args') {
       if (argv[i + 1]) result.flags.runtimeArgs.push(argv[i + 1]);
       i += 2;
     } else if (arg.startsWith('--runtime-arg=')) {
       result.flags.runtimeArgs.push(arg.slice(14));
+      i++;
+    } else if (arg.startsWith('--runtime-args=')) {
+      result.flags.runtimeArgs.push(arg.slice(15));
       i++;
     } else if (arg === '--command') {
       result.flags.command = argv[i + 1] || '';
@@ -162,11 +165,14 @@ export function parseArgs(argv) {
     } else if (arg.startsWith('--restart=')) {
       result.flags.restart = arg.slice(10);
       i++;
-    } else if (arg === '--arg') {
+    } else if (arg === '--arg' || arg === '--args') {
       if (argv[i + 1]) result.flags.args.push(argv[i + 1]);
       i += 2;
     } else if (arg.startsWith('--arg=')) {
       result.flags.args.push(arg.slice(6));
+      i++;
+    } else if (arg.startsWith('--args=')) {
+      result.flags.args.push(arg.slice(7));
       i++;
     } else if (arg === '--lines' || arg === '-n') {
       result.flags.lines = parseInt(argv[i + 1] || '100', 10);

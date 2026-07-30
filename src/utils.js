@@ -180,10 +180,17 @@ export function readAppMetadata(name) {
     const data = JSON.parse(content);
     if (!data) return null;
 
-    // Normalization for legacy metadata format
     const command = data.command || data.node || process.execPath;
     const args = data.args || (data.script ? [data.script] : []);
-    const runtime = data.runtime || 'node';
+    let runtime = data.runtime;
+    if (!runtime || (runtime === 'node' && data.command)) {
+      const baseCmd = path.basename(command).toLowerCase();
+      if (baseCmd !== 'node' && baseCmd !== 'nodejs') {
+        runtime = 'custom';
+      } else {
+        runtime = 'node';
+      }
+    }
     const script = data.script || args[0] || command;
     const cwd = data.cwd || (script ? path.dirname(script) : process.cwd());
 
@@ -472,7 +479,7 @@ export function saveScheduleMetadata(meta) {
     name: safeName,
     group: meta.group || 'default',
     type: 'timer',
-    runtime: meta.runtime || 'node',
+    runtime: meta.runtime || (meta.command ? 'custom' : 'node'),
     command,
     args,
     cwd: meta.cwd ? resolveAbsolutePath(meta.cwd) : process.cwd(),
@@ -502,7 +509,17 @@ export function readScheduleMetadata(name) {
     const filePath = getScheduleMetadataPath(name);
     if (!fs.existsSync(filePath)) return null;
     const content = fs.readFileSync(filePath, 'utf8');
-    return JSON.parse(content);
+    const meta = JSON.parse(content);
+    if (!meta) return null;
+
+    // Normalization for legacy metadata format where runtime defaulted to 'node' for custom commands
+    if (meta.runtime === 'node' && meta.command) {
+      const baseCmd = path.basename(meta.command).toLowerCase();
+      if (baseCmd !== 'node' && baseCmd !== 'nodejs') {
+        meta.runtime = 'custom';
+      }
+    }
+    return meta;
   } catch {
     return null;
   }

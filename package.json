@@ -1,6 +1,6 @@
 {
   "name": "unitup",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Minimal, zero-dependency systemd-native service manager for any runtime, script, or executable",
   "main": "src/index.js",
   "types": "./index.d.ts",
