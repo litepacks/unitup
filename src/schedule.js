@@ -141,7 +141,7 @@ export async function createSchedule(opts = {}) {
     ? resolveAbsolutePath(opts.cwd)
     : scriptPath
     ? path.dirname(scriptPath)
-    : path.dirname(commandExec);
+    : process.cwd();
 
   const envObj = {};
   if (opts.env) {

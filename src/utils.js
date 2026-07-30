@@ -141,7 +141,7 @@ export function saveAppMetadata(meta) {
   const rawArgs = Array.isArray(meta.args) ? meta.args : (meta.script ? [meta.script] : []);
   const args = rawArgs.map(a => (a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/')) ? resolveAbsolutePath(a) : a);
   const scriptPath = meta.script ? resolveAbsolutePath(meta.script) : (args[0] ? resolveAbsolutePath(args[0]) : command);
-  const cwd = meta.cwd ? resolveAbsolutePath(meta.cwd) : path.dirname(scriptPath || command);
+  const cwd = meta.cwd ? resolveAbsolutePath(meta.cwd) : (meta.script ? path.dirname(resolveAbsolutePath(meta.script)) : process.cwd());
 
   // Extract memory resources if present
   const resources = meta.resources || {};

@@ -83,8 +83,11 @@ export function generateUnitContent(opts) {
     throw new Error('Either "command" or "script" must be provided to generate systemd unit file.');
   }
 
-  const scriptOrCmdPath = opts.script ? resolveAbsolutePath(opts.script) : (execArgs[0] && (execArgs[0].startsWith('/') || execArgs[0].startsWith('./')) ? resolveAbsolutePath(execArgs[0]) : commandExec);
-  const cwd = opts.cwd ? resolveAbsolutePath(opts.cwd) : path.dirname(scriptOrCmdPath || commandExec);
+  const cwd = opts.cwd
+    ? resolveAbsolutePath(opts.cwd)
+    : opts.script
+    ? path.dirname(resolveAbsolutePath(opts.script))
+    : process.cwd();
   const restartPolicy = opts.restart || 'on-failure';
 
   const execStartTokens = [commandExec, ...execArgs];
@@ -306,8 +309,11 @@ export function generateScheduleServiceContent(opts) {
     throw new Error('Either "command" or "script" must be provided to generate scheduled unit file.');
   }
 
-  const scriptOrCmdPath = opts.script ? resolveAbsolutePath(opts.script) : (execArgs[0] && (execArgs[0].startsWith('/') || execArgs[0].startsWith('./')) ? resolveAbsolutePath(execArgs[0]) : commandExec);
-  const cwd = opts.cwd ? resolveAbsolutePath(opts.cwd) : path.dirname(scriptOrCmdPath || commandExec);
+  const cwd = opts.cwd
+    ? resolveAbsolutePath(opts.cwd)
+    : opts.script
+    ? path.dirname(resolveAbsolutePath(opts.script))
+    : process.cwd();
 
   const execStartTokens = [commandExec, ...execArgs];
   const execStartLine = execStartTokens.map(escapeExecArg).join(' ');

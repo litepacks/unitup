@@ -284,3 +284,16 @@ test('createSchedule with memory limits', async () => {
   assert.equal(meta.resources.memoryHigh, '256M');
   assert.equal(meta.resources.memoryMax, '512M');
 });
+
+test('createSchedule with command uses process.cwd as WorkingDirectory fallback', async () => {
+  await createSchedule({
+    name: 'cmd-job',
+    command: '/bin/bash',
+    args: ['-c', 'echo hello'],
+    every: '5m'
+  });
+
+  const serviceContent = fs.readFileSync(getUnitPath('cmd-job'), 'utf8');
+  assert.match(serviceContent, new RegExp(`WorkingDirectory=${process.cwd().replace(/\\/g, '\\\\')}`));
+});
+
