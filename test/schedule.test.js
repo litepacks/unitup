@@ -295,5 +295,8 @@ test('createSchedule with command uses process.cwd as WorkingDirectory fallback'
 
   const serviceContent = fs.readFileSync(getUnitPath('cmd-job'), 'utf8');
   assert.match(serviceContent, new RegExp(`WorkingDirectory=${process.cwd().replace(/\\/g, '\\\\')}`));
+
+  const meta = readScheduleMetadata('cmd-job');
+  assert.equal(meta.runtime, 'custom');
 });
 

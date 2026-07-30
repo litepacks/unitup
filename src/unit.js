@@ -446,7 +446,7 @@ export function writeScheduleUnitFiles(opts) {
   saveScheduleMetadata({
     name: safeName,
     group: opts.group || 'default',
-    runtime: opts.runtime || 'node',
+    runtime: opts.runtime || (opts.command ? 'custom' : 'node'),
     command: opts.command,
     args: opts.args,
     cwd: opts.cwd,

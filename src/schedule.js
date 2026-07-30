@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import {
   sanitizeServiceName,
   getUnitFilename,
@@ -106,36 +107,23 @@ export async function createSchedule(opts = {}) {
 
   const safeName = sanitizeServiceName(rawName);
 
-  let commandExec = '';
-  let execArgs = [];
-  let detectedRuntime = opts.runtime || 'node';
-  let scriptPath = '';
-
-  if (opts.command) {
-    commandExec = resolveAbsolutePath(opts.command);
-    execArgs = Array.isArray(opts.args) ? opts.args : [];
-    if (opts.script) {
-      scriptPath = resolveAbsolutePath(opts.script);
-    }
-  } else if (opts.script) {
-    scriptPath = resolveAbsolutePath(opts.script);
-    const runtimeInfo = detectRuntime(scriptPath, opts.runtime);
-    detectedRuntime = runtimeInfo.runtime;
-
-    const resolved = await resolveRuntimeConfig({
-      runtime: detectedRuntime,
-      script: scriptPath,
-      command: opts.command,
-      args: opts.args || [],
-      runtimeArgs: opts.runtimeArgs || [],
-      customNodePath: opts.node
-    });
-
-    commandExec = resolved.command;
-    execArgs = resolved.args;
-  } else {
+  if (!opts.script && !opts.command) {
     throw new Error('Either script or command must be provided to create schedule.');
   }
+
+  const scriptPath = opts.script ? resolveAbsolutePath(opts.script) : '';
+  const resolved = await resolveRuntimeConfig({
+    runtime: opts.runtime,
+    script: scriptPath,
+    command: opts.command,
+    args: opts.args || [],
+    runtimeArgs: opts.runtimeArgs || [],
+    customNodePath: opts.node
+  });
+
+  const commandExec = resolved.command;
+  const execArgs = resolved.args;
+  const detectedRuntime = resolved.runtime;
 
   const cwd = opts.cwd
     ? resolveAbsolutePath(opts.cwd)
@@ -333,7 +321,7 @@ export async function getScheduleStatus(name) {
     '--user',
     'show',
     timerFilename,
-    '--property=ActiveState,SubState,NextElapseUSecRealtime,NextElapseUSec,LastTriggerUSec,Unit,Triggers,UnitFileState'
+    '--property=ActiveState,SubState,NextElapseUSecRealtime,NextElapseUSecMonotonic,NextElapseUSec,LastTriggerUSec,Unit,Triggers,UnitFileState'
   ]);
 
   const showServiceRes = await runCommand('systemctl', [
@@ -374,17 +362,26 @@ export async function getScheduleStatus(name) {
 
   // Parse NextElapse timestamp
   let rawNext = timerProps.NextElapseUSecRealtime || timerProps.NextElapseUSec;
-  if (!rawNext || rawNext === '0' || rawNext === '18446744073709551615') {
-    rawNext = 'n/a';
-  }
-
   let nextRun = 'n/a';
-  if (rawNext !== 'n/a') {
+
+  if (rawNext && rawNext !== '0' && rawNext !== '18446744073709551615') {
     const num = Number(rawNext);
     if (!isNaN(num) && num > 0) {
       nextRun = formatFutureTime(Math.floor(num / 1000));
     } else {
       nextRun = formatFutureTime(rawNext);
+    }
+  } else if (timerProps.NextElapseUSecMonotonic && timerProps.NextElapseUSecMonotonic !== '0' && timerProps.NextElapseUSecMonotonic !== '18446744073709551615') {
+    const monoNum = Number(timerProps.NextElapseUSecMonotonic);
+    if (!isNaN(monoNum) && monoNum > 0) {
+      const currentMonoUSec = os.uptime() * 1000000;
+      const diffUSec = monoNum - currentMonoUSec;
+      if (diffUSec > 0) {
+        const targetMs = Date.now() + Math.floor(diffUSec / 1000);
+        nextRun = formatFutureTime(targetMs);
+      } else {
+        nextRun = 'imminent';
+      }
     }
   }
 
