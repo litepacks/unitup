@@ -174,7 +174,10 @@ export function saveAppMetadata(meta) {
  */
 export function readAppMetadata(name) {
   try {
-    const filePath = getAppMetadataPath(name);
+    let filePath = getAppMetadataPath(name);
+    if (!fs.existsSync(filePath)) {
+      filePath = getScheduleMetadataPath(name);
+    }
     if (!fs.existsSync(filePath)) return null;
     const content = fs.readFileSync(filePath, 'utf8');
     const data = JSON.parse(content);

@@ -6,7 +6,8 @@ import {
   sanitizeServiceName,
   getUnitFilename,
   formatRelativeTime,
-  readAppMetadata
+  readAppMetadata,
+  readScheduleMetadata
 } from './utils.js';
 import {
   getUserUnitDir,
@@ -516,7 +517,7 @@ export async function getServiceStatus(name) {
     ? formatRelativeTime(startedRaw)
     : 'never';
 
-  const meta = readAppMetadata(safeName);
+  const meta = readAppMetadata(safeName) || readScheduleMetadata(safeName);
   const command = meta?.command || parsed.command || meta?.node || process.execPath;
   const argsList = meta?.args || (parsed.script ? [parsed.script] : []);
 
@@ -555,7 +556,7 @@ export async function getServicesByGroup(groupName) {
   const units = listUnitFiles();
   const matched = [];
   for (const unit of units) {
-    const meta = readAppMetadata(unit.name);
+    const meta = readAppMetadata(unit.name) || readScheduleMetadata(unit.name);
     const itemGroup = meta?.group || 'default';
     if (itemGroup.toLowerCase() === cleanGroup.toLowerCase()) {
       matched.push(unit.name);
@@ -572,7 +573,7 @@ export async function listServices(filterOpts = {}) {
     : null;
 
   for (const unit of units) {
-    const meta = readAppMetadata(unit.name);
+    const meta = readAppMetadata(unit.name) || readScheduleMetadata(unit.name);
     const group = meta?.group || 'default';
     const runtime = meta?.runtime || 'node';
 
@@ -657,7 +658,7 @@ export async function inspectService(name) {
     throw new Error(`Service "${safeName}" does not exist.`);
   }
 
-  const meta = readAppMetadata(safeName);
+  const meta = readAppMetadata(safeName) || readScheduleMetadata(safeName);
   const statusObj = await getServiceStatus(safeName);
 
   const command = meta?.command || statusObj.command || statusObj.node || process.execPath;
