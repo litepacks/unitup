@@ -2,7 +2,60 @@
 
 > Minimal, zero-dependency CLI & library to run Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell scripts, and native binaries as `systemd` user services.
 
-`unitup` provides a thin, user-level layer over Linux `systemd`. It does **not** create a custom daemon, manage process trees, or act as a PM2 alternative. Instead, it generates and manages native systemd user units (`~/.config/systemd/user/unitup-<name>.service`), letting systemd handle process supervision, auto-restarts, logging, and OS boot startup without requiring `sudo` privileges.
+## What is unitup?
+
+`unitup` is a lightweight, zero-dependency CLI tool and library designed to run and manage background applications and scheduled tasks across Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell scripts, and compiled native binaries as native Linux `systemd` user services (`~/.config/systemd/user/`).
+
+Unlike traditional process managers (such as PM2) that run a persistent master daemon continuously consuming system CPU and RAM, `unitup` operates **without a resident background process**. When you run `unitup add`, `unitup start`, or `unitup schedule`, it generates standard `systemd` unit files (`.service` and `.timer`), registers them via `systemctl --user`, and exits immediately.
+
+Process supervision, auto-restarts, journald log tracking, cgroup v2 memory/resource limits, and OS boot persistence (`loginctl enable-linger`) are executed directly by the Linux kernel and `systemd` (PID 1)—completely in user space without requiring `sudo` privileges.
+
+### Architecture & Workflow
+
+```mermaid
+flowchart TD
+    subgraph UserSpace["User Space (No Sudo Required)"]
+        CLI["unitup CLI / API"]
+        Config["unitup.config.json / CLI Flags"]
+        App["App Code or Binary<br/>(Node, Python, Go, Rust, etc.)"]
+    end
+
+    subgraph UnitupEngine["unitup Engine"]
+        Detect["Runtime & Shebang Detection"]
+        PathRes["Absolute Path & PATH Resolution"]
+        Gen["Unit Generator<br/>(.service & .timer)"]
+    end
+
+    subgraph SystemdUserScope["systemd User Scope"]
+        ServiceFile["~/.config/systemd/user/<br/>unitup-app.service"]
+        TimerFile["~/.config/systemd/user/<br/>unitup-app.timer"]
+        Systemctl["systemctl --user"]
+    end
+
+    subgraph LinuxSupervision["Linux OS Supervision"]
+        Systemd["systemd (PID 1)"]
+        Journald["journald (Logs)"]
+        Cgroups["cgroups v2 (Memory & CPU)"]
+        AppProcess["Supervised App Process"]
+    end
+
+    CLI -->|1. Input & Target| Detect
+    App -->|Inspect extension / shebang| Detect
+    Config -->|Load defaults| CLI
+    Detect -->|2. Resolve Runtime| PathRes
+    PathRes -->|3. Build Unit Specs| Gen
+    Gen -->|4. Generate Unit File| ServiceFile
+    Gen -->|Optional Schedule| TimerFile
+    CLI -->|5. Issue Command| Systemctl
+    Systemctl -->|6. Load Service| ServiceFile
+    Systemd -->|7. Supervise Process| AppProcess
+    AppProcess -->|8. Stream Logs| Journald
+    Systemd -->|9. Enforce Resource Limits| Cgroups
+```
+
+---
+
+## Quick Start
 
 ```bash
 # Quick Start
