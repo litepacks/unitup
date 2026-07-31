@@ -2,13 +2,14 @@ import path from 'node:path';
 import fs from 'node:fs';
 
 export async function createNativeAdapter(opts = {}) {
+  const baseDir = opts.cwd || process.cwd();
   const targetPath = opts.script || opts.command;
 
   if (!targetPath) {
     throw new Error('Native executable path is required.');
   }
 
-  const absPath = path.resolve(process.cwd(), targetPath);
+  const absPath = path.resolve(baseDir, targetPath);
 
   if (!fs.existsSync(absPath)) {
     throw new Error(`Executable file does not exist: ${absPath}`);

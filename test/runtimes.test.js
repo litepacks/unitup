@@ -349,4 +349,20 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
     assert.ok('Go' in info.runtimes);
     assert.ok('Elixir' in info.runtimes);
   });
+
+  await t.test('resolves relative script path against opts.cwd instead of process.cwd()', async () => {
+    const projectSubdir = path.join(tmpDir, 'my_isolated_project');
+    fs.mkdirSync(projectSubdir, { recursive: true });
+    const targetScript = path.join(projectSubdir, 'server.js');
+    fs.writeFileSync(targetScript, 'console.log("isolated");');
+
+    const res = await resolveRuntimeConfig({
+      script: 'server.js',
+      cwd: projectSubdir,
+      runtime: 'node'
+    });
+
+    assert.equal(res.args[0], targetScript);
+    assert.notEqual(res.args[0], path.resolve(process.cwd(), 'server.js'));
+  });
 });

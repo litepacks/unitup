@@ -3,11 +3,12 @@ import fs from 'node:fs';
 import { findRuntimeExecutable, getBinaryVersion } from './common.js';
 
 export async function createElixirAdapter(opts = {}) {
+  const baseDir = opts.cwd || process.cwd();
   const customPath = opts.command;
   let execPath = null;
 
   if (customPath) {
-    const absPath = path.resolve(process.cwd(), customPath);
+    const absPath = path.resolve(baseDir, customPath);
     if (fs.existsSync(absPath)) {
       try {
         fs.accessSync(absPath, fs.constants.X_OK);
@@ -27,7 +28,7 @@ export async function createElixirAdapter(opts = {}) {
   }
 
   const version = await getBinaryVersion(execPath, '-v');
-  const scriptPath = opts.script ? path.resolve(process.cwd(), opts.script) : null;
+  const scriptPath = opts.script ? path.resolve(baseDir, opts.script) : null;
   const runtimeArgs = Array.isArray(opts.runtimeArgs) ? opts.runtimeArgs : [];
   const scriptArgs = Array.isArray(opts.args) ? opts.args : [];
 

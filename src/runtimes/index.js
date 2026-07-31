@@ -11,7 +11,7 @@ import { createNativeAdapter } from './native.js';
 import { createGoAdapter } from './go.js';
 import { createElixirAdapter } from './elixir.js';
 
-export function detectRuntime(filepath) {
+export function detectRuntime(filepath, opts = {}) {
   if (!filepath) {
     throw new Error('Script path or command is required for runtime detection.');
   }
@@ -42,7 +42,8 @@ export function detectRuntime(filepath) {
   }
 
   // Inspect shebang header if file exists
-  const absPath = path.resolve(process.cwd(), filepath);
+  const baseDir = opts.cwd || process.cwd();
+  const absPath = path.resolve(baseDir, filepath);
   if (fs.existsSync(absPath)) {
     try {
       const fd = fs.openSync(absPath, 'r');
@@ -85,9 +86,11 @@ export function detectRuntime(filepath) {
 }
 
 export async function resolveRuntimeConfig(opts = {}) {
+  const baseDir = opts.cwd || process.cwd();
+
   // 1. If explicit --command is provided, bypass runtime auto-detection
   if (opts.command) {
-    const absCommand = path.resolve(process.cwd(), opts.command);
+    const absCommand = path.resolve(baseDir, opts.command);
     if (!fs.existsSync(absCommand)) {
       // If binary doesn't exist as exact file path, check if it's in PATH or native executable
       const { findRuntimeExecutable } = await import('./common.js');
@@ -116,7 +119,7 @@ export async function resolveRuntimeConfig(opts = {}) {
   // 2. Resolve target runtime name
   let runtimeName = opts.runtime;
   if (!runtimeName) {
-    runtimeName = detectRuntime(opts.script);
+    runtimeName = detectRuntime(opts.script, opts);
   }
 
   const cleanRuntime = runtimeName.toLowerCase();

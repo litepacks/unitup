@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-31
+
+### Fixed
+- Fixed script argument resolution in all runtime adapters (`node`, `python`, `ruby`, `php`, `bun`, `deno`, `shell`, `go`, `elixir`, `native`) to resolve relative script paths against `opts.cwd` instead of `process.cwd()`.
+
 ## [0.1.4] - 2026-07-31
 
 ### Added
