@@ -32,7 +32,16 @@ import {
   disableSchedule,
   removeSchedule
 } from './schedule.js';
-import { sanitizeServiceName, formatTable, readGlobalConfig, saveGlobalConfig, validateMemorySize } from './utils.js';
+import {
+  sanitizeServiceName,
+  formatTable,
+  readGlobalConfig,
+  saveGlobalConfig,
+  validateMemorySize,
+  findProjectConfig,
+  readProjectConfig,
+  saveProjectConfig
+} from './utils.js';
 
 /**
  * Custom light CLI argument parser without runtime dependencies.
@@ -51,6 +60,7 @@ export function parseArgs(argv) {
       command: '',
       node: '',
       cwd: '',
+      config: '',
       env: [],
       envFile: '',
       restart: 'on-failure',
@@ -146,6 +156,12 @@ export function parseArgs(argv) {
       i += 2;
     } else if (arg.startsWith('--cwd=')) {
       result.flags.cwd = arg.slice(6);
+      i++;
+    } else if (arg === '--config') {
+      result.flags.config = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--config=')) {
+      result.flags.config = arg.slice(9);
       i++;
     } else if (arg === '--env') {
       if (argv[i + 1]) result.flags.env.push(argv[i + 1]);
@@ -350,6 +366,7 @@ unitup - Minimal systemd user service wrapper for any executable & runtime
 
 Usage:
   unitup doctor                 Run system readiness and runtime check
+  unitup init [script]          Create local project config file (unitup.config.json)
   unitup add <script> [options] Add script or executable as systemd user service
   unitup start <name|@group>    Start a service (--enable to enable on boot)
   unitup stop <name|@group>     Stop a service
@@ -362,6 +379,9 @@ Usage:
   unitup list / unitup ls       List all services (--group <group>)
   unitup memory / unitup top    Show memory usage for all apps or a specific app
   unitup config                 Manage global configuration (--default-memory 1G)
+
+Config Options:
+  --config <path>        Path to custom project config file (defaults to unitup.config.json)
 
 Schedule Commands:
   unitup schedule <script> [options] Create a systemd timer schedule
@@ -440,10 +460,86 @@ export async function runCli(argv = process.argv.slice(2)) {
         break;
       }
 
-      case 'add': {
+      case 'init': {
+        const targetCwd = flags.cwd ? path.resolve(process.cwd(), flags.cwd) : process.cwd();
+        const configFilename = flags.config || 'unitup.config.json';
+        const targetConfigPath = path.resolve(targetCwd, configFilename);
+
+        if (fs.existsSync(targetConfigPath) && !flags.force) {
+          throw new Error(
+            `Configuration file "${path.basename(targetConfigPath)}" already exists at ${targetConfigPath}.\n` +
+            `Use --force (-f) to overwrite.`
+          );
+        }
+
         const scriptArg = positionals[0];
+        let scriptPath = scriptArg || '';
         let name = flags.name;
-        let absScriptPath = scriptArg ? path.resolve(process.cwd(), scriptArg) : undefined;
+        if (!name) {
+          if (scriptPath) {
+            const baseName = path.basename(scriptPath);
+            const ext = path.extname(baseName);
+            name = ext ? baseName.slice(0, -ext.length) : baseName;
+          } else {
+            name = path.basename(targetCwd);
+          }
+        }
+
+        const envObj = {};
+        for (const e of flags.env) {
+          const idx = e.indexOf('=');
+          if (idx !== -1) {
+            envObj[e.slice(0, idx)] = e.slice(idx + 1);
+          } else {
+            envObj[e] = '';
+          }
+        }
+
+        const projectCfg = {
+          name,
+          ...(scriptPath ? { script: scriptPath } : {}),
+          ...(flags.command ? { command: flags.command } : {}),
+          ...(flags.runtime ? { runtime: flags.runtime } : {}),
+          ...(flags.runtimeArgs && flags.runtimeArgs.length > 0 ? { runtimeArgs: flags.runtimeArgs } : {}),
+          group: flags.group || 'default',
+          ...(Object.keys(envObj).length > 0 ? { env: envObj } : {}),
+          ...(flags.envFile ? { envFile: flags.envFile } : {}),
+          ...(flags.restart ? { restart: flags.restart } : { restart: 'on-failure' }),
+          ...(flags.args && flags.args.length > 0 ? { args: flags.args } : {})
+        };
+
+        if (flags.memoryMax || flags.memoryHigh || flags.memorySwapMax) {
+          projectCfg.resources = {};
+          if (flags.memoryHigh) projectCfg.resources.memoryHigh = flags.memoryHigh;
+          if (flags.memoryMax) projectCfg.resources.memoryMax = flags.memoryMax;
+          if (flags.memorySwapMax) projectCfg.resources.memorySwapMax = flags.memorySwapMax;
+        }
+
+        const writtenPath = saveProjectConfig(targetConfigPath, projectCfg);
+        console.log(`✓ Project configuration created at ${writtenPath}`);
+        console.log(`Run "unitup add" to register service from configuration.`);
+        break;
+      }
+
+      case 'add': {
+        const targetCwd = flags.cwd ? path.resolve(process.cwd(), flags.cwd) : process.cwd();
+        const configPath = flags.config ? path.resolve(targetCwd, flags.config) : findProjectConfig(targetCwd);
+        const projectCfg = configPath ? readProjectConfig(configPath) : null;
+
+        const scriptArg = positionals[0] || (projectCfg ? projectCfg.script : undefined);
+        let name = flags.name || (projectCfg ? projectCfg.name : undefined);
+        let cmdFlag = flags.command || (projectCfg ? projectCfg.command : undefined);
+        let runtimeFlag = flags.runtime || (projectCfg ? projectCfg.runtime : undefined);
+        let groupFlag = flags.group || (projectCfg ? projectCfg.group : undefined) || 'default';
+        let restartFlag = flags.restart !== 'on-failure' ? flags.restart : ((projectCfg && projectCfg.restart) || 'on-failure');
+        let envFileFlag = flags.envFile || (projectCfg ? projectCfg.envFile : undefined);
+        let argsFlag = (flags.args && flags.args.length > 0) ? flags.args : ((projectCfg && projectCfg.args) || []);
+        let runtimeArgsFlag = (flags.runtimeArgs && flags.runtimeArgs.length > 0) ? flags.runtimeArgs : ((projectCfg && projectCfg.runtimeArgs) || []);
+        let memoryHighFlag = flags.memoryHigh || (projectCfg?.resources?.memoryHigh || projectCfg?.memoryHigh || '');
+        let memoryMaxFlag = flags.memoryMax || (projectCfg?.resources?.memoryMax || projectCfg?.memoryMax || '');
+        let memorySwapMaxFlag = flags.memorySwapMax || (projectCfg?.resources?.memorySwapMax || projectCfg?.memorySwapMax || '');
+
+        let absScriptPath = scriptArg ? path.resolve(targetCwd, scriptArg) : undefined;
 
         if (flags.node) {
           const resolvedNode = await findNodeExecutable(flags.node);
@@ -452,14 +548,14 @@ export async function runCli(argv = process.argv.slice(2)) {
           }
         }
 
-        if (flags.command) {
+        if (cmdFlag) {
           if (!name) {
             if (scriptArg) {
               const baseName = path.basename(scriptArg);
               const ext = path.extname(baseName);
               name = ext ? baseName.slice(0, -ext.length) : baseName;
             } else {
-              const baseCmd = path.basename(flags.command);
+              const baseCmd = path.basename(cmdFlag);
               name = baseCmd;
             }
           }
@@ -477,7 +573,7 @@ export async function runCli(argv = process.argv.slice(2)) {
           }
         }
 
-        const envObj = {};
+        const envObj = (projectCfg && projectCfg.env && typeof projectCfg.env === 'object') ? { ...projectCfg.env } : {};
         for (const e of flags.env) {
           const idx = e.indexOf('=');
           if (idx !== -1) {
@@ -489,21 +585,21 @@ export async function runCli(argv = process.argv.slice(2)) {
 
         const res = await addService({
           name,
-          group: flags.group || 'default',
+          group: groupFlag,
           script: absScriptPath,
-          command: flags.command,
-          runtime: flags.runtime,
-          runtimeArgs: flags.runtimeArgs,
+          command: cmdFlag,
+          runtime: runtimeFlag,
+          runtimeArgs: runtimeArgsFlag,
           nodePath: flags.node,
-          cwd: flags.cwd ? path.resolve(process.cwd(), flags.cwd) : (absScriptPath ? path.dirname(absScriptPath) : process.cwd()),
+          cwd: targetCwd,
           env: envObj,
-          envFile: flags.envFile ? path.resolve(process.cwd(), flags.envFile) : undefined,
-          restart: flags.restart,
-          args: flags.args,
+          envFile: envFileFlag ? path.resolve(targetCwd, envFileFlag) : undefined,
+          restart: restartFlag,
+          args: argsFlag,
           start: flags.start,
-          memoryHigh: flags.memoryHigh,
-          memoryMax: flags.memoryMax,
-          memorySwapMax: flags.memorySwapMax,
+          memoryHigh: memoryHighFlag,
+          memoryMax: memoryMaxFlag,
+          memorySwapMax: memorySwapMaxFlag,
           defaultMemory: flags.defaultMemory,
           force: flags.force
         });

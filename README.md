@@ -92,6 +92,40 @@ At its core, `unitup` generates systemd service unit files directly from a gener
 
 ## CLI Usage
 
+### Project Configuration (`unitup.config.json`)
+
+You can create a local configuration file in any project directory to define default service settings:
+
+```bash
+# Initialize a unitup.config.json file in the current folder
+unitup init app.js --name my-app --memory-max 512M --env PORT=3000
+
+# Add service using settings from unitup.config.json
+unitup add
+
+# Explicit CLI flags override settings in unitup.config.json
+unitup add --memory-max 1G
+```
+
+Example `unitup.config.json`:
+```json
+{
+  "name": "my-app",
+  "group": "backend",
+  "script": "app.js",
+  "runtime": "node",
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "3000"
+  },
+  "resources": {
+    "memoryMax": "512M",
+    "memoryHigh": "400M"
+  },
+  "restart": "on-failure"
+}
+```
+
 ### Memory Limits
 
 `unitup` allows you to set native systemd memory limits for your services without running background monitoring daemons:

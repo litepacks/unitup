@@ -482,6 +482,31 @@ export function checkNodeDiagnostics(customNodePath?: string): Promise<NodeDiagn
 export function findNodeExecutable(customPath?: string): Promise<string | null>;
 export function getDoctorInfo(): Promise<DoctorInfo>;
 
+export interface ProjectConfig {
+  name?: string;
+  group?: string;
+  script?: string;
+  command?: string;
+  runtime?: string;
+  runtimeArgs?: string[];
+  args?: string[];
+  env?: Record<string, string>;
+  envFile?: string;
+  restart?: string;
+  resources?: {
+    memoryHigh?: string;
+    memoryMax?: string;
+    memorySwapMax?: string;
+  };
+  memoryHigh?: string;
+  memoryMax?: string;
+  memorySwapMax?: string;
+}
+
+export function findProjectConfig(dirPath?: string): string | null;
+export function readProjectConfig(filePathOrDir?: string): ProjectConfig | null;
+export function saveProjectConfig(dirPathOrFile?: string, config?: ProjectConfig): string;
+
 // Path & Unit Helpers
 export function getUserUnitDir(): string;
 export function getUnitPath(name: string): string;

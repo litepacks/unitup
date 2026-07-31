@@ -699,4 +699,64 @@ export function resolveEffectiveMemoryLimits(opts = {}) {
   return {};
 }
 
+/**
+ * Finds the project configuration file path if it exists in the target directory.
+ * Standard names checked: unitup.config.json, .unitup.json
+ *
+ * @param {string} [dirPath=process.cwd()]
+ * @returns {string|null}
+ */
+export function findProjectConfig(dirPath = process.cwd()) {
+  const dir = path.resolve(dirPath);
+  const candidates = ['unitup.config.json', '.unitup.json'];
+  for (const file of candidates) {
+    const full = path.join(dir, file);
+    if (fs.existsSync(full)) {
+      return full;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads a project configuration file.
+ *
+ * @param {string} [filePathOrDir=process.cwd()]
+ * @returns {object|null}
+ */
+export function readProjectConfig(filePathOrDir = process.cwd()) {
+  try {
+    let filePath = filePathOrDir;
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+      filePath = findProjectConfig(filePath);
+    }
+    if (!filePath || !fs.existsSync(filePath)) return null;
+    const content = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(content) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Saves a project configuration file (`unitup.config.json`).
+ *
+ * @param {string} [dirPathOrFile=process.cwd()]
+ * @param {object} config
+ * @returns {string} File path written to
+ */
+export function saveProjectConfig(dirPathOrFile = process.cwd(), config = {}) {
+  let filePath = dirPathOrFile;
+  if (!filePath.endsWith('.json')) {
+    filePath = path.join(filePath, 'unitup.config.json');
+  }
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf8');
+  return filePath;
+}
+
+
 
