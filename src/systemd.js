@@ -8,7 +8,9 @@ import {
   getTimerFilename,
   formatRelativeTime,
   readAppMetadata,
-  readScheduleMetadata
+  readScheduleMetadata,
+  findProjectConfig,
+  readProjectConfig
 } from './utils.js';
 import {
   getUserUnitDir,
@@ -281,13 +283,40 @@ export async function resetFailed() {
 }
 
 export async function addService(opts) {
-  const safeName = sanitizeServiceName(opts.name);
+  const targetCwd = opts.cwd ? path.resolve(process.cwd(), opts.cwd) : process.cwd();
+  const configPath = opts.config ? path.resolve(targetCwd, opts.config) : findProjectConfig(targetCwd);
+  const projectCfg = configPath ? readProjectConfig(configPath) : null;
+
+  let mergedOpts = { ...opts };
+  if (projectCfg) {
+    mergedOpts = {
+      name: opts.name || projectCfg.name,
+      group: opts.group || projectCfg.group || 'default',
+      script: opts.script || projectCfg.script,
+      command: opts.command || projectCfg.command,
+      runtime: opts.runtime || projectCfg.runtime,
+      runtimeArgs: (opts.runtimeArgs && opts.runtimeArgs.length > 0) ? opts.runtimeArgs : (projectCfg.runtimeArgs || []),
+      args: (opts.args && opts.args.length > 0) ? opts.args : (projectCfg.args || []),
+      envFile: opts.envFile || projectCfg.envFile,
+      restart: (opts.restart && opts.restart !== 'on-failure') ? opts.restart : (projectCfg.restart || 'on-failure'),
+      memoryHigh: opts.memoryHigh || projectCfg?.resources?.memoryHigh || projectCfg?.memoryHigh || '',
+      memoryMax: opts.memoryMax || projectCfg?.resources?.memoryMax || projectCfg?.memoryMax || '',
+      memorySwapMax: opts.memorySwapMax || projectCfg?.resources?.memorySwapMax || projectCfg?.memorySwapMax || '',
+      ...opts,
+      env: { ...(projectCfg.env || {}), ...(opts.env || {}) },
+      cwd: targetCwd
+    };
+  }
+
+  const safeName = sanitizeServiceName(mergedOpts.name);
+  let wasActive = false;
 
   if (unitFileExists(safeName)) {
     try {
       const show = await getServiceShow(safeName);
       if (show.ActiveState === 'active') {
-        if (!opts.force) {
+        wasActive = true;
+        if (!mergedOpts.force) {
           throw new Error(
             `Service "${safeName}" is currently running.\n` +
             `Use --force (-f) to overwrite running services, or stop it first:\n` +
@@ -302,20 +331,22 @@ export async function addService(opts) {
     }
   }
 
-  const runtimeConfig = await resolveRuntimeConfig({ ...opts, name: safeName });
+  const runtimeConfig = await resolveRuntimeConfig({ ...mergedOpts, name: safeName });
 
   const { path: unitPath } = writeUnitFile({
-    ...opts,
+    ...mergedOpts,
     name: safeName,
     runtime: runtimeConfig.runtime,
     command: runtimeConfig.command,
     args: runtimeConfig.args,
-    cwd: opts.cwd
+    cwd: mergedOpts.cwd
   });
 
   await daemonReload();
 
-  if (opts.start) {
+  if (wasActive && mergedOpts.force) {
+    await restartService(safeName);
+  } else if (mergedOpts.start) {
     await startService(safeName, true);
   }
 
