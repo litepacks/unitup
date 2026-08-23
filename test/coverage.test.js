@@ -1,56 +1,60 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, test } from 'node:test';
+import { parseArgs, runCli } from '../src/cli.js';
+import { getDoctorInfo, runDoctor } from '../src/doctor.js';
 import {
-  sanitizeServiceName,
-  getUnitFilename,
-  getServiceNameFromUnit,
-  resolveAbsolutePath,
-  formatSystemdEnv,
-  escapeExecArg,
-  formatRelativeTime,
-  formatTable
-} from '../src/utils.js';
+  checkNodeDiagnostics,
+  checkUserLinger,
+  daemonReload,
+  findNodeExecutable,
+  getServiceStatus,
+  getServiceStatusRaw,
+  isSystemctlAvailable,
+  isSystemdPID1,
+  isUserSystemdAvailable,
+  isUserUnitDirWritable,
+  listServices,
+  removeService,
+  resetCommandRunner,
+  restartService,
+  runJournalctlLogs,
+  setCommandRunner,
+  startService,
+  stopService
+} from '../src/systemd.js';
 import {
-  getUserUnitDir,
-  getUnitPath,
-  unitFileExists,
   deleteUnitFile,
+  getUnitPath,
+  getUserUnitDir,
   listUnitFiles,
   parseUnitContent,
+  unitFileExists,
   writeUnitFile
 } from '../src/unit.js';
 import {
-  setCommandRunner,
-  resetCommandRunner,
-  daemonReload,
-  startService,
-  stopService,
-  restartService,
-  removeService,
-  getServiceStatus,
-  getServiceStatusRaw,
-  listServices,
-  runJournalctlLogs,
-  isSystemctlAvailable,
-  isUserSystemdAvailable,
-  isUserUnitDirWritable,
-  checkUserLinger,
-  findNodeExecutable,
-  checkNodeDiagnostics,
-  isSystemdPID1
-} from '../src/systemd.js';
-import { runDoctor, getDoctorInfo } from '../src/doctor.js';
-import { parseArgs, runCli } from '../src/cli.js';
+  escapeExecArg,
+  formatRelativeTime,
+  formatSystemdEnv,
+  formatTable,
+  getServiceNameFromUnit,
+  getUnitFilename,
+  resolveAbsolutePath,
+  sanitizeServiceName
+} from '../src/utils.js';
 
 async function captureConsole(fn) {
   const origLog = console.log;
   const origErr = console.error;
   const logs = [];
-  console.log = (...args) => { logs.push(args.join(' ')); };
-  console.error = (...args) => { logs.push(args.join(' ')); };
+  console.log = (...args) => {
+    logs.push(args.join(' '));
+  };
+  console.error = (...args) => {
+    logs.push(args.join(' '));
+  };
   try {
     await fn();
   } finally {
@@ -74,7 +78,8 @@ describe('Coverage Extension Suite', () => {
       if (cmd === 'systemctl' && args.includes('show')) {
         return {
           code: 0,
-          stdout: 'ActiveState=active\nSubState=running\nMainPID=9999\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
+          stdout:
+            'ActiveState=active\nSubState=running\nMainPID=9999\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
           stderr: ''
         };
       }
@@ -227,7 +232,9 @@ describe('Coverage Extension Suite', () => {
     assert.equal(status.status, 'activating');
 
     // listServices failure branch
-    setCommandRunner(async () => { throw new Error('Command failed'); });
+    setCommandRunner(async () => {
+      throw new Error('Command failed');
+    });
     const list = await listServices();
     assert.equal(list.length, 1);
     assert.equal(list[0].status, 'unknown');
@@ -248,7 +255,6 @@ describe('Coverage Extension Suite', () => {
     });
     const fallbackLogs = await runJournalctlLogs('err-test', { follow: false });
     assert.equal(fallbackLogs, 'Fallback system log line');
-
   });
 
   test('cli.js parsing and execution coverage', async () => {
@@ -256,7 +262,8 @@ describe('Coverage Extension Suite', () => {
       '--name=my-name',
       '--cwd=/my/cwd',
       '--env=ENV1=VAL1',
-      '--env', 'ENV2',
+      '--env',
+      'ENV2',
       '--env-file=/my/env',
       '--restart=always',
       '--arg=arg1',
@@ -301,7 +308,10 @@ describe('Coverage Extension Suite', () => {
     const addLogs = await captureConsole(async () => {
       await runCli(['add', noExtScript, '--env-file', noExtScript]);
     });
-    assert.ok(addLogs.some(line => line.includes('Service "worker" created')), `addLogs output: ${JSON.stringify(addLogs)}`);
+    assert.ok(
+      addLogs.some((line) => line.includes('Service "worker" created')),
+      `addLogs output: ${JSON.stringify(addLogs)}`
+    );
 
     const nodeErrLogs = await captureConsole(async () => {
       process.exitCode = 0;
@@ -309,22 +319,25 @@ describe('Coverage Extension Suite', () => {
       assert.equal(process.exitCode, 1);
       process.exitCode = 0;
     });
-    assert.ok(nodeErrLogs.some(line => line.includes('Node.js is required but not found')), `nodeErrLogs output: ${JSON.stringify(nodeErrLogs)}`);
+    assert.ok(
+      nodeErrLogs.some((line) => line.includes('Node.js is required but not found')),
+      `nodeErrLogs output: ${JSON.stringify(nodeErrLogs)}`
+    );
 
     const helpLogs = await captureConsole(async () => {
       await runCli(['--help']);
     });
-    assert.ok(helpLogs.some(line => line.includes('unitup - Minimal systemd user service wrapper')));
+    assert.ok(helpLogs.some((line) => line.includes('unitup - Minimal systemd user service wrapper')));
 
     const versionLogs = await captureConsole(async () => {
       await runCli(['--version']);
     });
-    assert.ok(versionLogs.some(line => line.includes('unitup v')));
+    assert.ok(versionLogs.some((line) => line.includes('unitup v')));
 
     const doctorLogs = await captureConsole(async () => {
       await runCli(['doctor']);
     });
-    assert.ok(doctorLogs.some(line => line.includes('unitup doctor')));
+    assert.ok(doctorLogs.some((line) => line.includes('unitup doctor')));
 
     // Status formatted and raw CLI commands
     setCommandRunner(async (cmd, args) => {
@@ -334,7 +347,8 @@ describe('Coverage Extension Suite', () => {
       if (cmd === 'systemctl' && args.includes('show')) {
         return {
           code: 0,
-          stdout: 'ActiveState=active\nSubState=running\nMainPID=1111\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
+          stdout:
+            'ActiveState=active\nSubState=running\nMainPID=1111\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
           stderr: ''
         };
       }
@@ -369,8 +383,8 @@ describe('Coverage Extension Suite', () => {
     const docLogs1 = await captureConsole(async () => {
       await runDoctor();
     });
-    assert.ok(docLogs1.some(line => line.includes('unitup doctor')));
-    assert.ok(docLogs1.some(line => line.includes('User lingering is')));
+    assert.ok(docLogs1.some((line) => line.includes('unitup doctor')));
+    assert.ok(docLogs1.some((line) => line.includes('User lingering is')));
 
     // 2. Non-Linux OS check
     const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
@@ -379,7 +393,7 @@ describe('Coverage Extension Suite', () => {
     const docLogs2 = await captureConsole(async () => {
       await runDoctor();
     });
-    assert.ok(docLogs2.some(line => line.includes('Non-Linux OS detected')));
+    assert.ok(docLogs2.some((line) => line.includes('Non-Linux OS detected')));
 
     if (origPlatform) {
       Object.defineProperty(process, 'platform', origPlatform);

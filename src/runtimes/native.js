@@ -1,5 +1,5 @@
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
 
 export async function createNativeAdapter(opts = {}) {
   const baseDir = opts.cwd || process.cwd();
@@ -23,9 +23,7 @@ export async function createNativeAdapter(opts = {}) {
   try {
     fs.accessSync(absPath, fs.constants.X_OK);
   } catch {
-    throw new Error(
-      `The executable is not runnable.\n\nRun:\n  chmod +x ${absPath}`
-    );
+    throw new Error(`The executable is not runnable.\n\nRun:\n  chmod +x ${absPath}`);
   }
 
   const scriptArgs = Array.isArray(opts.args) ? opts.args : [];

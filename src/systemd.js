@@ -3,24 +3,24 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  sanitizeServiceName,
-  getUnitFilename,
-  getTimerFilename,
-  formatRelativeTime,
-  readAppMetadata,
-  readScheduleMetadata,
-  findProjectConfig,
-  readProjectConfig
-} from './utils.js';
-import {
-  getUserUnitDir,
-  getUnitPath,
-  unitFileExists,
   deleteUnitFile,
+  getUnitPath,
+  getUserUnitDir,
   listUnitFiles,
-  writeUnitFile,
-  parseUnitContent
+  parseUnitContent,
+  unitFileExists,
+  writeUnitFile
 } from './unit.js';
+import {
+  findProjectConfig,
+  formatRelativeTime,
+  getTimerFilename,
+  getUnitFilename,
+  readAppMetadata,
+  readProjectConfig,
+  readScheduleMetadata,
+  sanitizeServiceName
+} from './utils.js';
 
 /**
  * Default runner for executing commands via child_process.execFile.
@@ -295,10 +295,10 @@ export async function addService(opts) {
       script: opts.script || projectCfg.script,
       command: opts.command || projectCfg.command,
       runtime: opts.runtime || projectCfg.runtime,
-      runtimeArgs: (opts.runtimeArgs && opts.runtimeArgs.length > 0) ? opts.runtimeArgs : (projectCfg.runtimeArgs || []),
-      args: (opts.args && opts.args.length > 0) ? opts.args : (projectCfg.args || []),
+      runtimeArgs: opts.runtimeArgs && opts.runtimeArgs.length > 0 ? opts.runtimeArgs : projectCfg.runtimeArgs || [],
+      args: opts.args && opts.args.length > 0 ? opts.args : projectCfg.args || [],
       envFile: opts.envFile || projectCfg.envFile,
-      restart: (opts.restart && opts.restart !== 'on-failure') ? opts.restart : (projectCfg.restart || 'on-failure'),
+      restart: opts.restart && opts.restart !== 'on-failure' ? opts.restart : projectCfg.restart || 'on-failure',
       memoryHigh: opts.memoryHigh || projectCfg?.resources?.memoryHigh || projectCfg?.memoryHigh || '',
       memoryMax: opts.memoryMax || projectCfg?.resources?.memoryMax || projectCfg?.memoryMax || '',
       memorySwapMax: opts.memorySwapMax || projectCfg?.resources?.memorySwapMax || projectCfg?.memorySwapMax || '',
@@ -319,8 +319,8 @@ export async function addService(opts) {
         if (!mergedOpts.force) {
           throw new Error(
             `Service "${safeName}" is currently running.\n` +
-            `Use --force (-f) to overwrite running services, or stop it first:\n` +
-            `  unitup stop ${safeName}`
+              `Use --force (-f) to overwrite running services, or stop it first:\n` +
+              `  unitup stop ${safeName}`
           );
         }
       }
@@ -454,8 +454,8 @@ export async function removeService(name, opts = {}) {
       if (!force) {
         throw new Error(
           `Service "${safeName}" is currently running.\n` +
-          `Use --force (-f) to remove running services, or stop it first:\n` +
-          `  unitup stop ${safeName}`
+            `Use --force (-f) to remove running services, or stop it first:\n` +
+            `  unitup stop ${safeName}`
         );
       }
     }
@@ -545,9 +545,7 @@ export async function getServiceStatus(name) {
   const pid = show.MainPID && show.MainPID !== '0' ? show.MainPID : '-';
   const restarts = show.NRestarts ?? '0';
   const startedRaw = show.ActiveEnterTimestamp;
-  const started = startedRaw && startedRaw !== '0' && startedRaw !== 'n/a'
-    ? formatRelativeTime(startedRaw)
-    : 'never';
+  const started = startedRaw && startedRaw !== '0' && startedRaw !== 'n/a' ? formatRelativeTime(startedRaw) : 'never';
 
   const meta = readAppMetadata(safeName) || readScheduleMetadata(safeName);
   const command = meta?.command || parsed.command || meta?.node || process.execPath;
@@ -620,7 +618,7 @@ export async function listServices(filterOpts = {}) {
       } else {
         const cmdBase = path.basename(meta.command);
         const argsStr = (meta.args || [])
-          .map(a => (a.startsWith('/') || a.startsWith('./') ? path.basename(a) : a))
+          .map((a) => (a.startsWith('/') || a.startsWith('./') ? path.basename(a) : a))
           .join(' ');
         commandSummary = (cmdBase + (argsStr ? ' ' + argsStr : '')).trim();
       }
@@ -672,9 +670,8 @@ export async function listServices(filterOpts = {}) {
       const pid = show.MainPID && show.MainPID !== '0' ? show.MainPID : '-';
       const restarts = show.NRestarts ?? '0';
       const startedRaw = show.ActiveEnterTimestamp;
-      const uptime = startedRaw && startedRaw !== '0' && startedRaw !== 'n/a'
-        ? formatRelativeTime(startedRaw)
-        : 'never';
+      const uptime =
+        startedRaw && startedRaw !== '0' && startedRaw !== 'n/a' ? formatRelativeTime(startedRaw) : 'never';
 
       result.push({
         name: unit.name,
@@ -788,8 +785,13 @@ export async function runJournalctlLogs(name, opts = {}) {
 
   if (opts.diskUsage) {
     const res = await runCommand('journalctl', ['--disk-usage']);
-    if (res.code !== 0 && (res.stderr.toLowerCase().includes('permission') || res.stderr.toLowerCase().includes('root'))) {
-      throw new Error('Journal maintenance requires additional privileges on this system.\nRun the command manually with the appropriate permissions.');
+    if (
+      res.code !== 0 &&
+      (res.stderr.toLowerCase().includes('permission') || res.stderr.toLowerCase().includes('root'))
+    ) {
+      throw new Error(
+        'Journal maintenance requires additional privileges on this system.\nRun the command manually with the appropriate permissions.'
+      );
     }
     return res.stdout || res.stderr;
   }
@@ -951,7 +953,7 @@ export async function executeJournalctlMaintenance(action, opts = {}) {
       }
       args.push(`--vacuum-time=${timeStr}`);
     } else if (opts.files) {
-      const filesNum = parseInt(opts.files, 10);
+      const filesNum = Number.parseInt(opts.files, 10);
       if (Number.isNaN(filesNum) || filesNum <= 0) {
         throw new Error(`Invalid vacuum files count: "${opts.files}". Must be a positive integer.`);
       }
@@ -968,8 +970,15 @@ export async function executeJournalctlMaintenance(action, opts = {}) {
   }
 
   const res = await runCommand('journalctl', args);
-  if (res.code !== 0 && (res.stderr.toLowerCase().includes('permission') || res.stderr.toLowerCase().includes('root') || res.stderr.toLowerCase().includes('access denied'))) {
-    throw new Error('Journal maintenance requires additional privileges on this system.\nRun the command manually with the appropriate permissions.');
+  if (
+    res.code !== 0 &&
+    (res.stderr.toLowerCase().includes('permission') ||
+      res.stderr.toLowerCase().includes('root') ||
+      res.stderr.toLowerCase().includes('access denied'))
+  ) {
+    throw new Error(
+      'Journal maintenance requires additional privileges on this system.\nRun the command manually with the appropriate permissions.'
+    );
   }
 
   return (res.stdout || res.stderr || 'Journal maintenance completed successfully.').trim();
@@ -1009,9 +1018,15 @@ export async function getServiceMemoryUsage(name) {
   const effective = resolveEffectiveMemoryLimits(meta || {});
 
   const memoryCurrentBytes = Number(props.MemoryCurrent);
-  const rawBytes = !isNaN(memoryCurrentBytes) && memoryCurrentBytes > 0 && memoryCurrentBytes < 1e15 ? memoryCurrentBytes : 0;
+  const rawBytes =
+    !isNaN(memoryCurrentBytes) && memoryCurrentBytes > 0 && memoryCurrentBytes < 1e15 ? memoryCurrentBytes : 0;
 
-  const status = props.ActiveState === 'active' ? (props.SubState === 'running' ? 'running' : props.SubState || 'active') : (props.ActiveState || 'stopped');
+  const status =
+    props.ActiveState === 'active'
+      ? props.SubState === 'running'
+        ? 'running'
+        : props.SubState || 'active'
+      : props.ActiveState || 'stopped';
 
   return {
     name: safeName,
@@ -1091,7 +1106,7 @@ export async function getAllServicesMemoryUsage(opts = {}) {
     }
   }
 
-  const runningCount = items.filter(i => i.status === 'running' || i.status === 'active').length;
+  const runningCount = items.filter((i) => i.status === 'running' || i.status === 'active').length;
 
   return {
     items,

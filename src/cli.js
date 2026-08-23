@@ -1,46 +1,48 @@
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
 import { runDoctor } from './doctor.js';
-import {
-  addService,
-  startService,
-  stopService,
-  restartService,
-  removeService,
-  getServiceStatus,
-  getServiceStatusRaw,
-  listServices,
-  runJournalctlLogs,
-  isLinux,
-  isSystemctlAvailable,
-  findNodeExecutable,
-  getServicesByGroup,
-  inspectService,
-  getServiceFailures,
-  setServiceLimits,
-  executeJournalctlMaintenance,
-  getServiceMemoryUsage,
-  getAllServicesMemoryUsage
-} from './systemd.js';
+import { getAdapter } from './platform/index.js';
 import {
   createSchedule,
-  listSchedules,
-  getScheduleStatus,
-  runSchedule,
-  enableSchedule,
   disableSchedule,
-  removeSchedule
+  enableSchedule,
+  getScheduleStatus,
+  listSchedules,
+  removeSchedule,
+  runSchedule
 } from './schedule.js';
+import { defaultManager } from './service/manager.js';
 import {
-  sanitizeServiceName,
+  addService,
+  executeJournalctlMaintenance,
+  findNodeExecutable,
+  getAllServicesMemoryUsage,
+  getServiceFailures,
+  getServiceMemoryUsage,
+  getServiceStatus,
+  getServiceStatusRaw,
+  getServicesByGroup,
+  inspectService,
+  isLinux,
+  isSystemctlAvailable,
+  listServices,
+  removeService,
+  restartService,
+  runJournalctlLogs,
+  setServiceLimits,
+  startService,
+  stopService
+} from './systemd.js';
+import {
+  findProjectConfig,
   formatTable,
   readGlobalConfig,
-  saveGlobalConfig,
-  validateMemorySize,
-  findProjectConfig,
   readProjectConfig,
-  saveProjectConfig
+  sanitizeServiceName,
+  saveGlobalConfig,
+  saveProjectConfig,
+  validateMemorySize
 } from './utils.js';
 
 /**
@@ -75,6 +77,8 @@ export function parseArgs(argv) {
       help: false,
       version: false,
       force: false,
+      system: false,
+      verbose: false,
       memoryHigh: '',
       memoryMax: '',
       memorySwapMax: '',
@@ -111,6 +115,12 @@ export function parseArgs(argv) {
       i++;
     } else if (arg === '-v' || arg === '--version') {
       result.flags.version = true;
+      i++;
+    } else if (arg === '--verbose') {
+      result.flags.verbose = true;
+      i++;
+    } else if (arg === '--system') {
+      result.flags.system = true;
       i++;
     } else if (arg === '--runtime') {
       result.flags.runtime = argv[i + 1] || '';
@@ -191,10 +201,10 @@ export function parseArgs(argv) {
       result.flags.args.push(arg.slice(7));
       i++;
     } else if (arg === '--lines' || arg === '-n') {
-      result.flags.lines = parseInt(argv[i + 1] || '100', 10);
+      result.flags.lines = Number.parseInt(argv[i + 1] || '100', 10);
       i += 2;
     } else if (arg.startsWith('--lines=')) {
-      result.flags.lines = parseInt(arg.slice(8), 10);
+      result.flags.lines = Number.parseInt(arg.slice(8), 10);
       i++;
     } else if (arg === '--start') {
       result.flags.start = true;
@@ -352,7 +362,6 @@ export function parseArgs(argv) {
       }
       i++;
     } else {
-      // Unknown flag, treat as positional or ignore
       i++;
     }
   }
@@ -362,29 +371,33 @@ export function parseArgs(argv) {
 
 export function printHelp() {
   console.log(`
-unitup - Minimal systemd user service wrapper for any executable & runtime
+unitup - Minimal systemd user service wrapper & cross-platform service manager (Linux, macOS, Windows)
 
 Usage:
   unitup doctor                 Run system readiness and runtime check
   unitup init [script]          Create local project config file (unitup.config.json)
-  unitup add <script> [options] Add script or executable as systemd user service
+  unitup install / add <script> Install script or executable as native service (--dry-run)
   unitup start <name|@group>    Start a service (--enable to enable on boot)
   unitup stop <name|@group>     Stop a service
   unitup restart <name|@group>  Restart a service
-  unitup status <name|@group>   Show status summary (--raw for full status)
-  unitup logs <name|@group>     Show journalctl logs (-f/--follow, -n/--lines N, -c/--cat)
+  unitup status <name|@group>   Show status summary (--raw, --verbose)
+  unitup enable <name>          Enable service on startup/boot
+  unitup disable <name>         Disable service on startup/boot
+  unitup logs <name|@group>     Show service logs (-f/--follow, -n/--lines N, -c/--cat)
   unitup inspect <name>         View detailed app configuration and status
   unitup failures               List all failed services with exit code & restarts
-  unitup remove <name|@group>   Stop, disable and delete a service
+  unitup uninstall / remove     Stop, disable and delete a service (--force)
   unitup list / unitup ls       List all services (--group <group>)
   unitup memory / unitup top    Show memory usage for all apps or a specific app
   unitup config                 Manage global configuration (--default-memory 1G)
 
 Config Options:
   --config <path>        Path to custom project config file (defaults to unitup.config.json)
+  --system               Install as system-wide service (LaunchDaemons on macOS / root systemd)
+  --dry-run              Display generated service configuration without installing
 
-Schedule Commands:
-  unitup schedule <script> [options] Create a systemd timer schedule
+Schedule Commands (systemd):
+  unitup schedule <script> [options] Create a timer schedule
   unitup schedules / unitup timers    List all schedule timers
   unitup schedule-status <name>       Show detailed schedule timer status
   unitup schedule-run <name>          Manually run schedule service unit once
@@ -398,21 +411,13 @@ Memory Options:
   --memory-max <size>    Hard memory limit (e.g. 512M, 1G)
   --default-memory [sz]  Apply default memory limit (defaults to 1G)
 
-Schedule Options:
-  --every <duration>     Execution interval (e.g., 30s, 10m, 2h, 1d)
-  --calendar <expr>      Calendar expression (e.g., daily, "Mon..Fri 09:00")
-  --on-boot <duration>   Delay relative to system boot (e.g., 5m)
-  --on-active <duration> Delay relative to timer activation
-  --random-delay <dur>   Random delay to prevent stampedes (e.g., 10m)
-  --persistent           Run immediately if a scheduled run was missed
-  --start                Enable and start timer immediately after creation
-
 Examples:
-  unitup add server.js --runtime node --default-memory 1G
-  unitup config --default-memory 1G
-  unitup schedule cleanup.js --every 30m --default-memory --start
-  unitup schedule backup.py --calendar daily --random-delay 10m --start
-  unitup schedule report.js --calendar "Mon..Fri 09:00" --start
+  unitup install server.js --name api --start
+  unitup install ./app.js --dry-run
+  unitup start api
+  unitup status api --verbose
+  unitup logs api --follow
+  unitup uninstall api
 `);
 }
 
@@ -468,12 +473,12 @@ export async function runCli(argv = process.argv.slice(2)) {
         if (fs.existsSync(targetConfigPath) && !flags.force) {
           throw new Error(
             `Configuration file "${path.basename(targetConfigPath)}" already exists at ${targetConfigPath}.\n` +
-            `Use --force (-f) to overwrite.`
+              `Use --force (-f) to overwrite.`
           );
         }
 
         const scriptArg = positionals[0];
-        let scriptPath = scriptArg || '';
+        const scriptPath = scriptArg || '';
         let name = flags.name;
         if (!name) {
           if (scriptPath) {
@@ -521,6 +526,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         break;
       }
 
+      case 'install':
       case 'add': {
         const targetCwd = flags.cwd ? path.resolve(process.cwd(), flags.cwd) : process.cwd();
         const configPath = flags.config ? path.resolve(targetCwd, flags.config) : findProjectConfig(targetCwd);
@@ -528,18 +534,23 @@ export async function runCli(argv = process.argv.slice(2)) {
 
         const scriptArg = positionals[0] || (projectCfg ? projectCfg.script : undefined);
         let name = flags.name || (projectCfg ? projectCfg.name : undefined);
-        let cmdFlag = flags.command || (projectCfg ? projectCfg.command : undefined);
-        let runtimeFlag = flags.runtime || (projectCfg ? projectCfg.runtime : undefined);
-        let groupFlag = flags.group || (projectCfg ? projectCfg.group : undefined) || 'default';
-        let restartFlag = flags.restart !== 'on-failure' ? flags.restart : ((projectCfg && projectCfg.restart) || 'on-failure');
-        let envFileFlag = flags.envFile || (projectCfg ? projectCfg.envFile : undefined);
-        let argsFlag = (flags.args && flags.args.length > 0) ? flags.args : ((projectCfg && projectCfg.args) || []);
-        let runtimeArgsFlag = (flags.runtimeArgs && flags.runtimeArgs.length > 0) ? flags.runtimeArgs : ((projectCfg && projectCfg.runtimeArgs) || []);
-        let memoryHighFlag = flags.memoryHigh || (projectCfg?.resources?.memoryHigh || projectCfg?.memoryHigh || '');
-        let memoryMaxFlag = flags.memoryMax || (projectCfg?.resources?.memoryMax || projectCfg?.memoryMax || '');
-        let memorySwapMaxFlag = flags.memorySwapMax || (projectCfg?.resources?.memorySwapMax || projectCfg?.memorySwapMax || '');
+        const cmdFlag = flags.command || (projectCfg ? projectCfg.command : undefined);
+        const runtimeFlag = flags.runtime || (projectCfg ? projectCfg.runtime : undefined);
+        const groupFlag = flags.group || (projectCfg ? projectCfg.group : undefined) || 'default';
+        const restartFlag =
+          flags.restart !== 'on-failure' ? flags.restart : (projectCfg && projectCfg.restart) || 'on-failure';
+        const envFileFlag = flags.envFile || (projectCfg ? projectCfg.envFile : undefined);
+        const argsFlag = flags.args && flags.args.length > 0 ? flags.args : (projectCfg && projectCfg.args) || [];
+        const runtimeArgsFlag =
+          flags.runtimeArgs && flags.runtimeArgs.length > 0
+            ? flags.runtimeArgs
+            : (projectCfg && projectCfg.runtimeArgs) || [];
+        const memoryHighFlag = flags.memoryHigh || projectCfg?.resources?.memoryHigh || projectCfg?.memoryHigh || '';
+        const memoryMaxFlag = flags.memoryMax || projectCfg?.resources?.memoryMax || projectCfg?.memoryMax || '';
+        const memorySwapMaxFlag =
+          flags.memorySwapMax || projectCfg?.resources?.memorySwapMax || projectCfg?.memorySwapMax || '';
 
-        let absScriptPath = scriptArg ? path.resolve(targetCwd, scriptArg) : undefined;
+        const absScriptPath = scriptArg ? path.resolve(targetCwd, scriptArg) : undefined;
 
         if (flags.node) {
           const resolvedNode = await findNodeExecutable(flags.node);
@@ -573,7 +584,7 @@ export async function runCli(argv = process.argv.slice(2)) {
           }
         }
 
-        const envObj = (projectCfg && projectCfg.env && typeof projectCfg.env === 'object') ? { ...projectCfg.env } : {};
+        const envObj = projectCfg && projectCfg.env && typeof projectCfg.env === 'object' ? { ...projectCfg.env } : {};
         for (const e of flags.env) {
           const idx = e.indexOf('=');
           if (idx !== -1) {
@@ -583,7 +594,7 @@ export async function runCli(argv = process.argv.slice(2)) {
           }
         }
 
-        const res = await addService({
+        const installOptions = {
           name,
           group: groupFlag,
           script: absScriptPath,
@@ -597,14 +608,27 @@ export async function runCli(argv = process.argv.slice(2)) {
           restart: restartFlag,
           args: argsFlag,
           start: flags.start,
+          system: flags.system,
           memoryHigh: memoryHighFlag,
           memoryMax: memoryMaxFlag,
           memorySwapMax: memorySwapMaxFlag,
           defaultMemory: flags.defaultMemory,
           force: flags.force
-        });
+        };
 
-        console.log(`✓ Service "${res.name}" created at ${res.unitPath}`);
+        if (flags.dryRun) {
+          const generated = await defaultManager.generate(installOptions);
+          if (typeof generated === 'string') {
+            console.log(generated);
+          } else {
+            console.log(JSON.stringify(generated, null, 2));
+          }
+          break;
+        }
+
+        const res = await defaultManager.install(installOptions);
+
+        console.log(`✓ Service "${res.name}" created at ${res.unitPath || res.serviceName || res.name}`);
         if (flags.start) {
           console.log(`✓ Service "${res.name}" enabled and started.`);
         } else {
@@ -638,7 +662,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await startService(name, flags.enable);
+          await defaultManager.start(name, { enable: flags.enable, system: flags.system });
           console.log(`✓ Service "${sanitizeServiceName(name)}" ${flags.enable ? 'enabled & ' : ''}started.`);
         }
         break;
@@ -651,7 +675,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await stopService(name);
+          await defaultManager.stop(name, { system: flags.system });
           console.log(`✓ Service "${sanitizeServiceName(name)}" stopped.`);
         }
         break;
@@ -660,20 +684,51 @@ export async function runCli(argv = process.argv.slice(2)) {
       case 'restart': {
         const nameArg = positionals[0];
         if (!nameArg) {
-          throw new Error('Service name or @group is required.\nExample: unitup restart api or unitup restart @myproject');
+          throw new Error(
+            'Service name or @group is required.\nExample: unitup restart api or unitup restart @myproject'
+          );
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await restartService(name);
+          await defaultManager.restart(name, { system: flags.system });
           console.log(`✓ Service "${sanitizeServiceName(name)}" restarted.`);
         }
         break;
       }
 
+      case 'enable': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Service name or @group is required.\nExample: unitup enable api');
+        }
+        const targetNames = await resolveTargetNames(nameArg);
+        for (const name of targetNames) {
+          await defaultManager.enable(name, { system: flags.system });
+          console.log(`✓ Service "${sanitizeServiceName(name)}" enabled on startup.`);
+        }
+        break;
+      }
+
+      case 'disable': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Service name or @group is required.\nExample: unitup disable api');
+        }
+        const targetNames = await resolveTargetNames(nameArg);
+        for (const name of targetNames) {
+          await defaultManager.disable(name, { system: flags.system });
+          console.log(`✓ Service "${sanitizeServiceName(name)}" disabled on startup.`);
+        }
+        break;
+      }
+
+      case 'ps':
       case 'status': {
         const nameArg = positionals[0];
         if (!nameArg) {
-          throw new Error('Service name or @group is required.\nExample: unitup status api or unitup status @myproject');
+          throw new Error(
+            'Service name or @group is required.\nExample: unitup status api or unitup status @myproject'
+          );
         }
 
         const targetNames = await resolveTargetNames(nameArg);
@@ -682,25 +737,31 @@ export async function runCli(argv = process.argv.slice(2)) {
             const raw = await getServiceStatusRaw(name);
             console.log(raw);
           } else {
-            const status = await getServiceStatus(name);
+            const status = await defaultManager.status(name, { system: flags.system });
             console.log(`${status.name}\n`);
-            console.log(`Status: ${status.status}`);
+            console.log(`Status: ${status.status || status.state}`);
             console.log(`PID: ${status.pid}`);
             console.log(`Started: ${status.started}`);
             console.log(`Restarts: ${status.restarts}`);
             console.log(`Command: ${status.command}`);
             console.log(`Arguments: ${status.arguments}`);
             console.log(`Working directory: ${status.cwd}`);
-            console.log(`Memory: ${status.memory}`);
-            console.log(`Memory Peak: ${status.memoryPeak}`);
-            console.log(`Memory High: ${status.memoryHigh}`);
-            console.log(`Memory Max: ${status.memoryMax}`);
-            console.log(`Swap Max: ${status.memorySwapMax}`);
+            if (status.memory) console.log(`Memory: ${status.memory}`);
+            if (status.memoryPeak) console.log(`Memory Peak: ${status.memoryPeak}`);
+            if (status.memoryHigh) console.log(`Memory High: ${status.memoryHigh}`);
+            if (status.memoryMax) console.log(`Memory Max: ${status.memoryMax}`);
+            if (status.memorySwapMax) console.log(`Swap Max: ${status.memorySwapMax}`);
+            if (flags.verbose) {
+              console.log(`Platform: ${status.platform}`);
+              console.log(`Manager: ${status.manager}`);
+              if (status.unitPath) console.log(`Unit Path: ${status.unitPath}`);
+            }
           }
         }
         break;
       }
 
+      case 'log':
       case 'logs': {
         const nameArg = positionals[0];
         if (!nameArg) {
@@ -712,7 +773,7 @@ export async function runCli(argv = process.argv.slice(2)) {
           if (targetNames.length > 1) {
             console.log(`=== Logs for ${name} ===`);
           }
-          const output = await runJournalctlLogs(name, {
+          const output = await defaultManager.logs(name, {
             follow: flags.follow,
             lines: flags.lines,
             cat: flags.cat,
@@ -723,7 +784,8 @@ export async function runCli(argv = process.argv.slice(2)) {
             grep: flags.grep,
             boot: flags.boot,
             json: flags.json,
-            diskUsage: flags.diskUsage
+            diskUsage: flags.diskUsage,
+            system: flags.system
           });
           if (typeof output === 'string') {
             console.log(output);
@@ -735,16 +797,21 @@ export async function runCli(argv = process.argv.slice(2)) {
       case 'journal': {
         const action = positionals[0];
         if (!action) {
-          throw new Error('Journal action is required (disk-usage, rotate, vacuum).\nExample: unitup journal vacuum --size 500M');
+          throw new Error(
+            'Journal action is required (disk-usage, rotate, vacuum).\nExample: unitup journal vacuum --size 500M'
+          );
         }
 
         if (action === 'vacuum' && !flags.yes && !flags.dryRun) {
           const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
           const answer = await new Promise((resolve) => {
-            rl.question('This operation affects archived journal logs system-wide,\nnot only services managed by unitup.\n\nContinue? [y/N] ', (ans) => {
-              rl.close();
-              resolve(ans.trim());
-            });
+            rl.question(
+              'This operation affects archived journal logs system-wide,\nnot only services managed by unitup.\n\nContinue? [y/N] ',
+              (ans) => {
+                rl.close();
+                resolve(ans.trim());
+              }
+            );
           });
           if (answer.toLowerCase() !== 'y' && answer.toLowerCase() !== 'yes') {
             console.log('Aborted.');
@@ -763,14 +830,19 @@ export async function runCli(argv = process.argv.slice(2)) {
         break;
       }
 
+      case 'uninstall':
+      case 'rm':
+      case 'delete':
       case 'remove': {
         const nameArg = positionals[0];
         if (!nameArg) {
-          throw new Error('Service name or @group is required.\nExample: unitup remove api or unitup remove @myproject');
+          throw new Error(
+            'Service name or @group is required.\nExample: unitup remove api or unitup remove @myproject'
+          );
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await removeService(name, { force: flags.force });
+          await defaultManager.uninstall(name, { force: flags.force, system: flags.system });
           console.log(`✓ Service "${sanitizeServiceName(name)}" removed.`);
         }
         break;
@@ -778,7 +850,7 @@ export async function runCli(argv = process.argv.slice(2)) {
 
       case 'ls':
       case 'list': {
-        const services = await listServices({ group: flags.group });
+        const services = await defaultManager.list({ group: flags.group });
         if (services.length === 0) {
           if (flags.group) {
             console.log(`No services found in group "${flags.group}".`);
@@ -804,7 +876,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         if (!nameArg) {
           throw new Error('Service name is required.\nExample: unitup inspect api');
         }
-        const info = await inspectService(nameArg);
+        const info = await defaultManager.inspect(nameArg, { system: flags.system });
         console.log(`Name: ${info.name}`);
         console.log(`Runtime: ${info.runtime}`);
         console.log(`Group: ${info.group}`);
@@ -812,17 +884,17 @@ export async function runCli(argv = process.argv.slice(2)) {
         console.log(`Command: ${info.command}`);
         console.log(`Arguments: ${info.arguments}`);
         console.log(`Working directory: ${info.cwd}`);
-        console.log(`Unit: ${info.unit}`);
-        console.log(`Memory: ${info.memory}`);
-        console.log(`Memory Peak: ${info.memoryPeak}`);
-        console.log(`Memory High: ${info.memoryHigh}`);
-        console.log(`Memory Max: ${info.memoryMax}`);
-        console.log(`Swap Max: ${info.memorySwapMax}`);
+        if (info.unit || info.unitFile) console.log(`Unit: ${info.unit || info.unitFile}`);
+        if (info.memory) console.log(`Memory: ${info.memory}`);
+        if (info.memoryPeak) console.log(`Memory Peak: ${info.memoryPeak}`);
+        if (info.memoryHigh) console.log(`Memory High: ${info.memoryHigh}`);
+        if (info.memoryMax) console.log(`Memory Max: ${info.memoryMax}`);
+        if (info.memorySwapMax) console.log(`Swap Max: ${info.memorySwapMax}`);
         break;
       }
 
       case 'failures': {
-        const failures = await getServiceFailures();
+        const failures = await defaultManager.failures();
         if (failures.length === 0) {
           console.log('✓ No failed services.');
           break;

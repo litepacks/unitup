@@ -1,12 +1,12 @@
-import path from 'node:path';
 import fs from 'node:fs';
+import path from 'node:path';
 import { runCommand } from '../systemd.js';
 
 export function findExecutableInPath(binaryName) {
   // 1. Check standard PATH env
   const envPath = process.env.PATH || '';
   const dirs = envPath.split(path.delimiter).filter(Boolean);
-  
+
   for (const dir of dirs) {
     const full = path.join(dir, binaryName);
     try {

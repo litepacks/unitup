@@ -1,31 +1,31 @@
-import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { detectRuntime, resolveRuntimeConfig } from './runtimes/index.js';
+import { runCommand } from './systemd.js';
 import {
-  sanitizeServiceName,
-  getUnitFilename,
-  getTimerFilename,
-  resolveAbsolutePath,
-  resolveWorkingDirectory,
-  validateDuration,
-  formatFutureTime,
-  formatRelativeTime,
-  saveScheduleMetadata,
-  readScheduleMetadata,
-  deleteScheduleMetadata,
-  getSchedulesDir
-} from './utils.js';
-import {
-  getUserUnitDir,
-  getUnitPath,
+  deleteScheduleUnitFiles,
   getTimerPath,
+  getUnitPath,
+  getUserUnitDir,
   timerFileExists,
   unitFileExists,
-  writeScheduleUnitFiles,
-  deleteScheduleUnitFiles
+  writeScheduleUnitFiles
 } from './unit.js';
-import { runCommand } from './systemd.js';
-import { detectRuntime, resolveRuntimeConfig } from './runtimes/index.js';
+import {
+  deleteScheduleMetadata,
+  formatFutureTime,
+  formatRelativeTime,
+  getSchedulesDir,
+  getTimerFilename,
+  getUnitFilename,
+  readScheduleMetadata,
+  resolveAbsolutePath,
+  resolveWorkingDirectory,
+  sanitizeServiceName,
+  saveScheduleMetadata,
+  validateDuration
+} from './utils.js';
 
 /**
  * Validates a systemd calendar expression using systemd-analyze if available.
@@ -53,7 +53,10 @@ export async function validateCalendar(expression) {
     }
     // If systemd-analyze binary is missing
     if (res.code === 127 || (res.stderr && res.stderr.includes('not found'))) {
-      return { valid: true, warning: 'systemd-analyze is not available; calendar expression could not be fully validated by systemd.' };
+      return {
+        valid: true,
+        warning: 'systemd-analyze is not available; calendar expression could not be fully validated by systemd.'
+      };
     }
   } catch (err) {
     if (err.message && err.message.startsWith('Invalid calendar expression')) {
@@ -360,7 +363,7 @@ export async function getScheduleStatus(name) {
   }
 
   // Parse NextElapse timestamp
-  let rawNext = timerProps.NextElapseUSecRealtime || timerProps.NextElapseUSec;
+  const rawNext = timerProps.NextElapseUSecRealtime || timerProps.NextElapseUSec;
   let nextRun = 'n/a';
 
   if (rawNext && rawNext !== '0' && rawNext !== '18446744073709551615') {
@@ -370,7 +373,11 @@ export async function getScheduleStatus(name) {
     } else {
       nextRun = formatFutureTime(rawNext);
     }
-  } else if (timerProps.NextElapseUSecMonotonic && timerProps.NextElapseUSecMonotonic !== '0' && timerProps.NextElapseUSecMonotonic !== '18446744073709551615') {
+  } else if (
+    timerProps.NextElapseUSecMonotonic &&
+    timerProps.NextElapseUSecMonotonic !== '0' &&
+    timerProps.NextElapseUSecMonotonic !== '18446744073709551615'
+  ) {
     const monoNum = Number(timerProps.NextElapseUSecMonotonic);
     if (!isNaN(monoNum) && monoNum > 0) {
       const currentMonoUSec = os.uptime() * 1000000;
@@ -385,7 +392,7 @@ export async function getScheduleStatus(name) {
   }
 
   // Parse LastTrigger timestamp
-  let rawLast = timerProps.LastTriggerUSec;
+  const rawLast = timerProps.LastTriggerUSec;
   let lastRun = 'never';
   if (rawLast && rawLast !== '0' && rawLast !== 'n/a') {
     const num = Number(rawLast);

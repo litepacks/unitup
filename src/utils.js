@@ -1,6 +1,6 @@
-import path from 'node:path';
-import os from 'node:os';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 /**
  * Returns the base unitup config directory (~/.config/unitup).
@@ -75,7 +75,14 @@ export function validateMemorySize(val, paramName = 'Memory limit') {
  * @returns {string} Formatted memory string e.g. "284 MB", "infinity", "unavailable"
  */
 export function formatMemoryBytes(bytes) {
-  if (bytes === null || bytes === undefined || bytes === '' || bytes === 'unavailable' || bytes === '[unavailable]' || bytes === '-') {
+  if (
+    bytes === null ||
+    bytes === undefined ||
+    bytes === '' ||
+    bytes === 'unavailable' ||
+    bytes === '[unavailable]' ||
+    bytes === '-'
+  ) {
     return 'unavailable';
   }
 
@@ -137,10 +144,16 @@ export function saveAppMetadata(meta) {
   }
   const filePath = getAppMetadataPath(safeName);
 
-  const command = meta.command ? resolveAbsolutePath(meta.command) : (meta.node ? resolveAbsolutePath(meta.node) : process.execPath);
-  const rawArgs = Array.isArray(meta.args) ? meta.args : (meta.script ? [meta.script] : []);
-  const args = rawArgs.map(a => (a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/')) ? resolveAbsolutePath(a) : a);
-  const scriptPath = meta.script ? resolveAbsolutePath(meta.script) : (args[0] ? resolveAbsolutePath(args[0]) : command);
+  const command = meta.command
+    ? resolveAbsolutePath(meta.command)
+    : meta.node
+      ? resolveAbsolutePath(meta.node)
+      : process.execPath;
+  const rawArgs = Array.isArray(meta.args) ? meta.args : meta.script ? [meta.script] : [];
+  const args = rawArgs.map((a) =>
+    a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/') ? resolveAbsolutePath(a) : a
+  );
+  const scriptPath = meta.script ? resolveAbsolutePath(meta.script) : args[0] ? resolveAbsolutePath(args[0]) : command;
   const cwd = resolveWorkingDirectory(meta);
 
   // Extract memory resources if present
@@ -414,7 +427,7 @@ export function formatTable(data, columns) {
     return 'No services found.';
   }
 
-  const widths = columns.map(col => col.label.length);
+  const widths = columns.map((col) => col.label.length);
 
   for (const row of data) {
     columns.forEach((col, idx) => {
@@ -429,9 +442,7 @@ export function formatTable(data, columns) {
   const lines = [headerLine];
 
   for (const row of data) {
-    const line = columns
-      .map((col, idx) => String(row[col.key] ?? '').padEnd(widths[idx]))
-      .join('   ');
+    const line = columns.map((col, idx) => String(row[col.key] ?? '').padEnd(widths[idx])).join('   ');
     lines.push(line);
   }
 
@@ -471,7 +482,9 @@ export function saveScheduleMetadata(meta) {
 
   const command = meta.command ? resolveAbsolutePath(meta.command) : process.execPath;
   const rawArgs = Array.isArray(meta.args) ? meta.args : [];
-  const args = rawArgs.map(a => (a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/')) ? resolveAbsolutePath(a) : a);
+  const args = rawArgs.map((a) =>
+    a.startsWith('/') || a.startsWith('./') || a.startsWith('../') || a.startsWith('~/') ? resolveAbsolutePath(a) : a
+  );
 
   const resources = meta.resources || {};
   if (meta.memoryHigh) resources.memoryHigh = validateMemorySize(meta.memoryHigh, 'MemoryHigh');
@@ -578,7 +591,8 @@ export function validateDuration(val, paramName = 'Duration') {
   }
 
   const tokens = str.split(/\s+/);
-  const tokenRegex = /^(\d+(?:\.\d+)?)(us|usec|ms|msec|s|sec|seconds?|m|min|minutes?|h|hr|hours?|d|day|days?|w|week|weeks?|mth|months?|y|year|years?)$/i;
+  const tokenRegex =
+    /^(\d+(?:\.\d+)?)(us|usec|ms|msec|s|sec|seconds?|m|min|minutes?|h|hr|hours?|d|day|days?|w|week|weeks?|mth|months?|y|year|years?)$/i;
 
   for (const token of tokens) {
     if (!tokenRegex.test(token)) {
@@ -598,7 +612,9 @@ export function formatFutureTime(dateVal) {
   if (!dateVal || dateVal === 'n/a' || dateVal === '0' || dateVal === 'infinity') {
     return 'n/a';
   }
-  const date = new Date(typeof dateVal === 'number' && dateVal > 1e12 ? dateVal : (typeof dateVal === 'number' ? dateVal / 1000 : dateVal));
+  const date = new Date(
+    typeof dateVal === 'number' && dateVal > 1e12 ? dateVal : typeof dateVal === 'number' ? dateVal / 1000 : dateVal
+  );
   if (isNaN(date.getTime())) {
     return String(dateVal);
   }
@@ -691,7 +707,8 @@ export function resolveEffectiveMemoryLimits(opts = {}) {
   }
 
   if (defaultMem) {
-    const sizeStr = (typeof defaultMem === 'boolean' || defaultMem === 'true' || defaultMem === '') ? '1G' : String(defaultMem);
+    const sizeStr =
+      typeof defaultMem === 'boolean' || defaultMem === 'true' || defaultMem === '' ? '1G' : String(defaultMem);
     const validSize = validateMemorySize(sizeStr, 'Default memory limit');
     return { memoryMax: validSize };
   }
@@ -757,6 +774,3 @@ export function saveProjectConfig(dirPathOrFile = process.cwd(), config = {}) {
   fs.writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf8');
   return filePath;
 }
-
-
-

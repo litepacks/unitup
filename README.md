@@ -1,56 +1,74 @@
 # unitup
 
-> Minimal, zero-dependency CLI & library to run Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell scripts, and native binaries as `systemd` user services.
+> Minimal, zero-dependency cross-platform background service manager for Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell scripts, and native binaries.
 
 ## What is unitup?
 
-`unitup` is a lightweight, zero-dependency CLI tool and library designed to run and manage background applications and scheduled tasks across Node.js, Python, Ruby, PHP, Bun, Deno, Go, Elixir, Shell scripts, and compiled native binaries as native Linux `systemd` user services (`~/.config/systemd/user/`).
+`unitup` is a lightweight, zero-dependency CLI tool and programmatic library designed to run and manage background applications and services natively across:
+* **Linux** → `systemd` (`~/.config/systemd/user/`)
+* **macOS** → `launchd` (`~/Library/LaunchAgents/` & `/Library/LaunchDaemons/`)
+* **Windows** → `Windows Services` (`sc.exe` + Unitup Service Host)
 
-Unlike traditional process managers (such as PM2) that run a persistent master daemon continuously consuming system CPU and RAM, `unitup` operates **without a resident background process**. When you run `unitup add`, `unitup start`, or `unitup schedule`, it generates standard `systemd` unit files (`.service` and `.timer`), registers them via `systemctl --user`, and exits immediately.
+Unlike traditional process managers (such as PM2) that run a persistent master daemon continuously consuming system CPU and RAM, `unitup` operates **without a resident background process**. When you run `unitup install`, `unitup start`, or `unitup status`, it interacts directly with the operating system's native service manager and exits immediately.
 
-Process supervision, auto-restarts, journald log tracking, cgroup v2 memory/resource limits, and OS boot persistence (`loginctl enable-linger`) are executed directly by the Linux kernel and `systemd` (PID 1)—completely in user space without requiring `sudo` privileges.
+---
+
+## Platform Support Table
+
+| Feature | Linux | macOS | Windows |
+| :--- | :--- | :--- | :--- |
+| **Install / Uninstall** | `systemd` user/system unit | `launchd` agent/daemon plist | Windows Service (`sc.exe`) |
+| **Start / Stop** | `systemctl start/stop` | `launchctl kickstart/kill` | `sc.exe start/stop` |
+| **Restart** | `systemctl restart` | `launchctl kickstart -k` | SCM restart |
+| **Auto-start on Boot** | `systemctl enable` | `RunAtLoad: true` | Automatic service startup |
+| **Environment Variables** | `Environment=` | `EnvironmentVariables` plist dict | Environment forwarding |
+| **Logs** | `journalctl` | File-based tail streaming | File-based tail streaming |
+| **Crash Recovery** | `Restart=on-failure` | `KeepAlive` dictionary | Host supervisor recovery |
+| **User Services** | `~/.config/systemd/user/` | `~/Library/LaunchAgents/` | Supported |
+| **System Services** | `/etc/systemd/system/` | `/Library/LaunchDaemons/` | Native Windows Service |
+| **Dry-Run Inspection** | `--dry-run` (systemd unit) | `--dry-run` (plist XML) | `--dry-run` (service config) |
+| **Diagnostics** | `unitup doctor` | `unitup doctor` | `unitup doctor` |
+
+---
 
 ### Architecture & Workflow
 
 ```mermaid
 flowchart TD
-    subgraph UserSpace["User Space (No Sudo Required)"]
-        CLI["unitup CLI / API"]
-        Config["unitup.config.json / CLI Flags"]
-        App["App Code or Binary<br/>(Node, Python, Go, Rust, etc.)"]
+    CLI["unitup CLI / API"]
+    Manager["ServiceManager"]
+    Norm["NormalizedServiceConfig"]
+
+    CLI --> Manager
+    Manager --> Norm
+
+    subgraph Adapters["Platform Adapters"]
+        LinuxAdapt["LinuxAdapter<br/>(systemd)"]
+        MacAdapt["MacOSAdapter<br/>(launchd)"]
+        WinAdapt["WindowsAdapter<br/>(SCM / Host)"]
     end
 
-    subgraph UnitupEngine["unitup Engine"]
-        Detect["Runtime & Shebang Detection"]
-        PathRes["Absolute Path & PATH Resolution"]
-        Gen["Unit Generator<br/>(.service & .timer)"]
+    Norm --> LinuxAdapt
+    Norm --> MacAdapt
+    Norm --> WinAdapt
+
+    subgraph LinuxOS["Linux"]
+        ServiceFile["systemd Unit<br/>(.service & .timer)"]
+        Systemctl["systemctl & journalctl"]
+        LinuxAdapt --> ServiceFile --> Systemctl
     end
 
-    subgraph SystemdUserScope["systemd User Scope"]
-        ServiceFile["~/.config/systemd/user/<br/>unitup-app.service"]
-        TimerFile["~/.config/systemd/user/<br/>unitup-app.timer"]
-        Systemctl["systemctl --user"]
+    subgraph MacOSOS["macOS"]
+        PlistFile["launchd Plist<br/>(.plist)"]
+        Launchctl["launchctl (bootstrap / kickstart)"]
+        MacAdapt --> PlistFile --> Launchctl
     end
 
-    subgraph LinuxSupervision["Linux OS Supervision"]
-        Systemd["systemd (PID 1)"]
-        Journald["journald (Logs)"]
-        Cgroups["cgroups v2 (Memory & CPU)"]
-        AppProcess["Supervised App Process"]
+    subgraph WindowsOS["Windows"]
+        SCM["Windows SCM (sc.exe)"]
+        WinHost["Unitup Service Host"]
+        WinAdapt --> SCM --> WinHost
     end
-
-    CLI -->|1. Input & Target| Detect
-    App -->|Inspect extension / shebang| Detect
-    Config -->|Load defaults| CLI
-    Detect -->|2. Resolve Runtime| PathRes
-    PathRes -->|3. Build Unit Specs| Gen
-    Gen -->|4. Generate Unit File| ServiceFile
-    Gen -->|Optional Schedule| TimerFile
-    CLI -->|5. Issue Command| Systemctl
-    Systemctl -->|6. Load Service| ServiceFile
-    Systemd -->|7. Supervise Process| AppProcess
-    AppProcess -->|8. Stream Logs| Journald
-    Systemd -->|9. Enforce Resource Limits| Cgroups
 ```
 
 ---
@@ -58,16 +76,26 @@ flowchart TD
 ## Quick Start
 
 ```bash
-# Quick Start
+# Install globally
 npm install -g unitup
 
-unitup add server.js --start
-unitup status server
-unitup logs server --follow
+# Cross-platform installation
+unitup install server.js --name api --start
+unitup status api
+unitup logs api --follow
+unitup restart api
+unitup stop api
+unitup uninstall api
+
+# Inspect what would be generated without applying changes
+unitup install server.js --name api --dry-run
+
+# Run cross-platform system diagnostics
+unitup doctor
 
 # Multi-runtime & Native Executables
-unitup add worker.py --runtime python --start
-unitup add ./server --runtime native --name api --start
+unitup install worker.py --runtime python --start
+unitup install ./server --runtime native --name api --start
 ```
 
 ---

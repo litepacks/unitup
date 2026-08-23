@@ -1,15 +1,10 @@
-import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
-import {
-  createService,
-  removeService,
-  setCommandRunner,
-  resetCommandRunner
-} from '../src/index.js';
+import path from 'node:path';
+import { describe, test } from 'node:test';
 import { parseArgs, runCli } from '../src/cli.js';
+import { createService, removeService, resetCommandRunner, setCommandRunner } from '../src/index.js';
 
 describe('Active Service Protection & --force Flag Suite', () => {
   const tmpDir = path.join(os.tmpdir(), `unitup-force-test-${Date.now()}`);
@@ -57,10 +52,7 @@ describe('Active Service Protection & --force Flag Suite', () => {
         await removeService('active-app');
       },
       (err) => {
-        return (
-          err.message.includes('currently running') &&
-          err.message.includes('Use --force (-f)')
-        );
+        return err.message.includes('currently running') && err.message.includes('Use --force (-f)');
       }
     );
 
@@ -100,10 +92,7 @@ describe('Active Service Protection & --force Flag Suite', () => {
         });
       },
       (err) => {
-        return (
-          err.message.includes('currently running') &&
-          err.message.includes('Use --force (-f)')
-        );
+        return err.message.includes('currently running') && err.message.includes('Use --force (-f)');
       }
     );
 

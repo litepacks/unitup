@@ -1,22 +1,22 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, test } from 'node:test';
+import { runCli } from '../src/cli.js';
 import {
   addService,
-  startService,
-  stopService,
-  restartService,
-  removeService,
-  listServices,
-  inspectService,
-  getServiceFailures,
-  setCommandRunner,
   getAppMetadataPath,
-  readAppMetadata
+  getServiceFailures,
+  inspectService,
+  listServices,
+  readAppMetadata,
+  removeService,
+  restartService,
+  setCommandRunner,
+  startService,
+  stopService
 } from '../src/index.js';
-import { runCli } from '../src/cli.js';
 
 describe('Group & Metadata & Inspect & Failures Features', () => {
   let tmpDir;
@@ -34,13 +34,15 @@ describe('Group & Metadata & Inspect & Failures Features', () => {
         if (unitName.includes('failed')) {
           return {
             code: 0,
-            stdout: 'ActiveState=failed\nSubState=failed\nMainPID=0\nNRestarts=3\nExecMainStatus=1\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
+            stdout:
+              'ActiveState=failed\nSubState=failed\nMainPID=0\nNRestarts=3\nExecMainStatus=1\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
             stderr: ''
           };
         }
         return {
           code: 0,
-          stdout: 'ActiveState=active\nSubState=running\nMainPID=12345\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
+          stdout:
+            'ActiveState=active\nSubState=running\nMainPID=12345\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
           stderr: ''
         };
       }
@@ -181,7 +183,7 @@ describe('Group & Metadata & Inspect & Failures Features', () => {
       console.log = origLog;
     }
 
-    assert.ok(logs.some(line => line.includes('my-cli-app')));
-    assert.ok(logs.some(line => line.includes('my-group')));
+    assert.ok(logs.some((line) => line.includes('my-cli-app')));
+    assert.ok(logs.some((line) => line.includes('my-group')));
   });
 });

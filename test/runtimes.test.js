@@ -1,24 +1,24 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
 
+import { parseArgs, runCli } from '../src/cli.js';
 import {
   addService,
-  listServices,
-  inspectService,
-  getUserUnitDir,
-  getUnitPath,
-  parseUnitContent,
-  setCommandRunner,
-  resetCommandRunner,
   detectRuntime,
+  getDoctorInfo,
+  getUnitPath,
+  getUserUnitDir,
+  inspectService,
+  listServices,
+  parseUnitContent,
+  resetCommandRunner,
   resolveRuntimeConfig,
-  getDoctorInfo
+  setCommandRunner
 } from '../src/index.js';
-import { saveAppMetadata, readAppMetadata } from '../src/utils.js';
-import { runCli, parseArgs } from '../src/cli.js';
+import { readAppMetadata, saveAppMetadata } from '../src/utils.js';
 
 test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'unitup-runtimes-test-'));
@@ -61,7 +61,8 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
       if (args.includes('show')) {
         return {
           code: 0,
-          stdout: 'ActiveState=active\nSubState=running\nMainPID=14220\nNRestarts=0\nActiveEnterTimestamp=Mon 2026-07-26 12:00:00 UTC',
+          stdout:
+            'ActiveState=active\nSubState=running\nMainPID=14220\nNRestarts=0\nActiveEnterTimestamp=Mon 2026-07-26 12:00:00 UTC',
           stderr: ''
         };
       }
@@ -274,10 +275,7 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
         });
       },
       (err) => {
-        return (
-          err.message.includes('The executable is not runnable') &&
-          err.message.includes('chmod +x')
-        );
+        return err.message.includes('The executable is not runnable') && err.message.includes('chmod +x');
       }
     );
   });
@@ -311,17 +309,22 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
     try {
       await runCli([
         'add',
-        '--name', 'worker-cli',
-        '--command', path.join(binDir, 'python3'),
-        '--arg', pyScript,
-        '--arg', '--port',
-        '--arg', '3000'
+        '--name',
+        'worker-cli',
+        '--command',
+        path.join(binDir, 'python3'),
+        '--arg',
+        pyScript,
+        '--arg',
+        '--port',
+        '--arg',
+        '3000'
       ]);
     } finally {
       console.log = origLog;
     }
 
-    assert.ok(logs.some(l => l.includes('Service "worker-cli" created')));
+    assert.ok(logs.some((l) => l.includes('Service "worker-cli" created')));
     const meta = readAppMetadata('worker-cli');
     assert.equal(meta.command, path.join(binDir, 'python3'));
     assert.deepEqual(meta.args, [pyScript, '--port', '3000']);
@@ -330,7 +333,7 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
   await t.test('CLI list and inspect outputs', async () => {
     const listRes = await listServices();
     assert.ok(listRes.length > 0);
-    assert.ok(listRes.every(item => 'runtime' in item && 'command' in item));
+    assert.ok(listRes.every((item) => 'runtime' in item && 'command' in item));
 
     const pyWorkerInspect = await inspectService('generic-worker');
     assert.equal(pyWorkerInspect.name, 'generic-worker');

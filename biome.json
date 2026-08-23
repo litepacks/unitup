@@ -23,7 +23,6 @@
     "rules": {
       "recommended": true,
       "style": {
-        "useConstStruct": "off",
         "noUnusedTemplateLiteral": "off"
       },
       "complexity": {

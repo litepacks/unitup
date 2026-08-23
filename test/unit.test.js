@@ -1,19 +1,16 @@
-import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+import { generateUnitContent, parseUnitContent } from '../src/unit.js';
 import {
-  sanitizeServiceName,
-  getUnitFilename,
-  getServiceNameFromUnit,
-  resolveAbsolutePath,
-  formatSystemdEnv,
   escapeExecArg,
   formatRelativeTime,
-  formatTable
+  formatSystemdEnv,
+  formatTable,
+  getServiceNameFromUnit,
+  getUnitFilename,
+  resolveAbsolutePath,
+  sanitizeServiceName
 } from '../src/utils.js';
-import {
-  generateUnitContent,
-  parseUnitContent
-} from '../src/unit.js';
 
 describe('utils.js', () => {
   describe('sanitizeServiceName', () => {

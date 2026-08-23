@@ -1,11 +1,12 @@
 /**
- * unitup - Systemd user service manager for any executable & runtime
+ * unitup - Cross-platform native background service manager (systemd, launchd, Windows Services)
  */
 
-import { ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import type { EventEmitter } from 'node:events';
 
 /**
- * Options for creating/adding a systemd user service.
+ * Options for creating/adding/installing a service.
  */
 export interface CreateServiceOptions {
   /**
@@ -13,6 +14,16 @@ export interface CreateServiceOptions {
    * Safe characters: lowercase letters, numbers, hyphens, underscores.
    */
   name: string;
+
+  /**
+   * Optional display name (used on Windows/macOS where supported).
+   */
+  displayName?: string;
+
+  /**
+   * Optional service description.
+   */
+  description?: string;
 
   /**
    * Optional group name (e.g. 'myproject').
@@ -26,7 +37,7 @@ export interface CreateServiceOptions {
   runtime?: string;
 
   /**
-   * Runtime-specific flags/arguments passed before script (e.g. ['--allow-net'] for Deno or ['-S', '0.0.0.0:8080'] for PHP).
+   * Runtime-specific flags/arguments passed before script.
    */
   runtimeArgs?: string[];
 
@@ -51,20 +62,28 @@ export interface CreateServiceOptions {
   nodePath?: string;
 
   /**
-   * Key-value map of environment variables to inject into the systemd unit.
+   * Key-value map of environment variables to inject.
    */
   env?: Record<string, string>;
 
   /**
-   * Path to an environment file (adds EnvironmentFile=... directive).
+   * Path to an environment file.
    */
   envFile?: string;
 
   /**
-   * Systemd restart policy directive (e.g., 'on-failure', 'always', 'no', 'on-abnormal').
+   * Restart policy string (e.g., 'on-failure', 'always', 'no') or object.
    * @default 'on-failure'
    */
-  restart?: string;
+  restart?:
+    | string
+    | {
+        enabled?: boolean;
+        policy?: string;
+        delay?: number;
+        maxRetries?: number | null;
+        resetAfter?: number | null;
+      };
 
   /**
    * Positional arguments to pass to the script/command execution line.
@@ -82,6 +101,26 @@ export interface CreateServiceOptions {
    * @default false
    */
   force?: boolean;
+
+  /**
+   * Install as system-wide daemon (LaunchDaemons on macOS, root systemd on Linux).
+   * @default false
+   */
+  system?: boolean;
+
+  /**
+   * Graceful shutdown timeout in milliseconds before force killing child.
+   * @default 10000
+   */
+  shutdownTimeout?: number;
+
+  /**
+   * Custom log paths.
+   */
+  logs?: {
+    stdout?: string;
+    stderr?: string;
+  };
 
   /**
    * Soft memory limit directive (e.g. '400M').
@@ -104,235 +143,128 @@ export interface CreateServiceOptions {
   defaultMemory?: string | boolean;
 }
 
-/**
- * Options for setting or resetting service memory limits.
- */
-export interface ServiceLimitsOptions {
-  /**
-   * Soft memory limit directive (e.g. '400M').
-   */
-  memoryHigh?: string;
+export interface InstallServiceOptions extends CreateServiceOptions {}
 
-  /**
-   * Hard memory limit directive (e.g. '512M').
-   */
-  memoryMax?: string;
-
-  /**
-   * Swap memory limit directive (e.g. '256M').
-   */
-  memorySwapMax?: string;
-
-  /**
-   * Resets all memory limits back to defaults/infinity.
-   * @default false
-   */
-  resetMemory?: boolean;
+export interface NormalizedServiceConfig {
+  name: string;
+  displayName: string;
+  description: string;
+  runtime: string;
+  command: string;
+  args: string[];
+  script?: string;
+  cwd: string;
+  env: Record<string, string>;
+  envFile?: string;
+  autostart: boolean;
+  restart: {
+    enabled: boolean;
+    policy: string;
+    delay: number;
+    maxRetries?: number | null;
+    resetAfter?: number | null;
+  };
+  logs: {
+    stdout: string;
+    stderr: string;
+  };
+  group: string;
+  system: boolean;
+  shutdownTimeout: number;
+  resources: {
+    memoryHigh?: string;
+    memoryMax?: string;
+    memorySwapMax?: string;
+  };
+  raw?: Record<string, unknown>;
 }
 
-/**
- * Options for retrieving journalctl log output.
- */
-export interface LogOptions {
-  /**
-   * Live streaming follow mode (-f).
-   * @default false
-   */
-  follow?: boolean;
-
-  /**
-   * Number of journal log lines to return (-n).
-   * @default 100
-   */
-  lines?: number;
-
-  /**
-   * Raw unformatted console output (-o cat) without systemd metadata prefix.
-   * @default false
-   */
-  cat?: boolean;
-
-  /**
-   * Journalctl output mode (e.g. 'cat', 'short', 'json').
-   */
-  output?: string;
+export interface PlatformCapabilities {
+  serviceManager: 'systemd' | 'launchd' | 'windows' | 'none';
+  supports: {
+    install: boolean;
+    uninstall: boolean;
+    start: boolean;
+    stop: boolean;
+    restart: boolean;
+    enable: boolean;
+    disable: boolean;
+    status: boolean;
+    logs: boolean;
+    restartPolicy: boolean;
+    userServices: boolean;
+    systemServices: boolean;
+    memoryLimits: boolean;
+    schedule: boolean;
+  };
 }
 
-/**
- * Parsed compact service status summary.
- */
 export interface ServiceStatus {
-  /**
-   * Clean service name (e.g. 'api').
-   */
   name: string;
-
-  /**
-   * Full systemd unit filename (e.g. 'unitup-api.service').
-   */
-  unitFile: string;
-
-  /**
-   * Status overview ('running', 'stopped', 'failed', 'exited', etc.).
-   */
+  installed: boolean;
+  state: 'running' | 'stopped' | 'starting' | 'stopping' | 'failed' | 'scheduled' | 'unknown' | string;
   status: string;
-
-  /**
-   * Raw ActiveState string from systemctl show.
-   */
-  activeState: string;
-
-  /**
-   * Raw SubState string from systemctl show.
-   */
-  subState: string;
-
-  /**
-   * Main Process ID (PID) of the service, or '-' if stopped.
-   */
+  enabled: boolean | string;
   pid: string;
-
-  /**
-   * Total number of restarts recorded by systemd.
-   */
-  restarts: string;
-
-  /**
-   * Relative formatted uptime/started string (e.g. '12 minutes ago').
-   */
+  restarts: string | number;
   started: string;
-
-  /**
-   * Raw timestamp from systemctl show.
-   */
-  startedRaw?: string;
-
-  /**
-   * Executable command path.
-   */
-  command: string;
-
-  /**
-   * Command arguments string.
-   */
-  arguments: string;
-
-  /**
-   * Array of command arguments.
-   */
-  args: string[];
-
-  /**
-   * Path to target script parsed from unit file.
-   */
-  script: string;
-
-  /**
-   * Working directory parsed from unit file.
-   */
-  cwd: string;
-}
-
-/**
- * Service item in list overview.
- */
-export interface ListServiceItem {
-  /**
-   * Service name.
-   */
-  name: string;
-
-  /**
-   * Runtime name.
-   */
-  runtime: string;
-
-  /**
-   * Group name.
-   */
-  group: string;
-
-  /**
-   * Status overview ('running', 'stopped', 'failed', etc.).
-   */
-  status: string;
-
-  /**
-   * Enabled status ('yes' or 'no').
-   */
-  enabled: string;
-
-  /**
-   * Main PID or '-'.
-   */
-  pid: string;
-
-  /**
-   * Command summary (e.g. 'node server.js' or 'python3 worker.py').
-   */
-  command: string;
-
-  /**
-   * Formatted uptime string.
-   */
-  uptime: string;
-
-  /**
-   * Restart count.
-   */
-  restarts: string;
-}
-
-/**
- * App metadata saved in ~/.config/unitup/apps/<name>.json.
- */
-export interface AppMetadata {
-  name: string;
-  unit: string;
-  runtime?: string;
-  command?: string;
-  args?: string[];
-  group: string;
-  script: string;
-  cwd: string;
-  node: string;
-}
-
-/**
- * Detailed application inspection summary (unitup inspect).
- */
-export interface InspectInfo {
-  name: string;
-  runtime: string;
-  unit: string;
-  unitPath: string;
-  group: string;
-  status: string;
-  activeState: string;
-  subState: string;
+  startedRaw?: string | null;
   command: string;
   arguments: string;
   args: string[];
+  script?: string;
   cwd: string;
-  pid: string;
-  restarts: string;
-  started: string;
-
+  unitFile?: string;
+  unitPath?: string;
+  platform: 'linux' | 'darwin' | 'win32' | string;
+  manager: 'systemd' | 'launchd' | 'windows' | string;
   memory?: string;
   memoryPeak?: string;
   memoryHigh?: string;
   memoryMax?: string;
   memorySwapMax?: string;
-
-  // Legacy compatibility fields
-  script?: string;
-  node?: string;
+  details?: Record<string, unknown>;
 }
 
-/**
- * Failed service failure report item (unitup failures).
- */
-export interface FailureItem {
+export interface LogOptions {
+  follow?: boolean;
+  lines?: number;
+  cat?: boolean;
+  output?: string;
+  since?: string;
+  until?: string;
+  priority?: string;
+  grep?: string;
+  boot?: boolean;
+  json?: boolean;
+  diskUsage?: boolean;
+  system?: boolean;
+}
+
+export interface AppMetadata {
+  name: string;
+  runtime: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  group?: string;
+  script?: string;
+  pid?: string;
+  restarts?: string;
+  started?: string;
+  logs?: {
+    stdout?: string;
+    stderr?: string;
+  };
+  resources?: {
+    memoryHigh?: string;
+    memoryMax?: string;
+    memorySwapMax?: string;
+  };
+  [key: string]: unknown;
+}
+
+export interface ServiceFailure {
   name: string;
   group: string;
   status: string;
@@ -341,287 +273,212 @@ export interface FailureItem {
   uptime: string;
 }
 
-/**
- * Diagnostic results for Node.js runtime environment.
- */
-export interface NodeDiagnostics {
-  found: boolean;
-  executable: boolean;
-  execPath: string;
-  whichPath: string;
-  version: string;
-  inPath: boolean;
-  error: string | null;
-  solution: string | null;
+// Error Classes
+export class UnitupError extends Error {
+  code: string;
+}
+export class UnsupportedPlatformError extends UnitupError {
+  platform: string;
+}
+export class ServiceNotFoundError extends UnitupError {
+  serviceName: string;
+}
+export class ServiceAlreadyExistsError extends UnitupError {
+  serviceName: string;
+}
+export class PermissionRequiredError extends UnitupError {
+  action?: string;
+}
+export class ServiceStartError extends UnitupError {
+  serviceName: string;
+  reason?: string;
+}
+export class ServiceStopError extends UnitupError {
+  serviceName: string;
+  reason?: string;
+}
+export class InvalidServiceConfigError extends UnitupError {
+  field?: string;
+}
+export class ExecutableNotFoundError extends UnitupError {
+  executable: string;
 }
 
-/**
- * Diagnostic report object from unitup doctor.
- */
-export interface DoctorInfo {
-  linux: boolean;
-  systemctl: boolean;
-  systemdRunning: boolean;
-  userSystemdAvailable: boolean;
-  cgroupV2?: boolean;
-  memoryController?: boolean;
-  memoryMaxSupported?: boolean;
-  memorySwapMaxSupported?: boolean;
-  nodeDiag: NodeDiagnostics;
-  nodePath: string;
-  nodeVersion: string;
-  runtimes: Record<string, string | null>;
-  unitDir: string;
-  unitDirWritable: boolean;
-  lingering: boolean;
-  username: string;
+// Adapters
+export abstract class ServiceAdapter {
+  constructor(options?: Record<string, unknown>);
+  readonly name: string;
+  readonly capabilities: PlatformCapabilities;
+  abstract generateService(config: NormalizedServiceConfig): string | Record<string, unknown>;
+  abstract install(
+    config: NormalizedServiceConfig,
+    options?: Record<string, unknown>
+  ): Promise<{ name: string; unitPath?: string; serviceName?: string }>;
+  abstract uninstall(name: string, options?: Record<string, unknown>): Promise<boolean>;
+  abstract start(name: string, options?: Record<string, unknown>): Promise<boolean>;
+  abstract stop(name: string, options?: Record<string, unknown>): Promise<boolean>;
+  abstract restart(name: string, options?: Record<string, unknown>): Promise<boolean>;
+  abstract enable(name: string, options?: Record<string, unknown>): Promise<boolean>;
+  abstract disable(name: string, options?: Record<string, unknown>): Promise<boolean>;
+  abstract status(name: string, options?: Record<string, unknown>): Promise<ServiceStatus>;
+  abstract inspect(name: string, options?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  abstract logs(name: string, options?: LogOptions): Promise<string | EventEmitter | ChildProcess>;
+  abstract list(options?: { group?: string }): Promise<Array<Record<string, unknown>>>;
+  abstract isInstalled(name: string, options?: Record<string, unknown>): Promise<boolean> | boolean;
+  abstract failures(options?: Record<string, unknown>): Promise<ServiceFailure[]>;
 }
 
-/**
- * Result returned when creating/adding a new unitup service.
- */
-export interface AddServiceResult {
-  name: string;
-  unitPath: string;
+export class LinuxAdapter extends ServiceAdapter {}
+export class MacOSAdapter extends ServiceAdapter {}
+export class WindowsAdapter extends ServiceAdapter {}
+export class WindowsServiceHost {
+  constructor(config?: Record<string, unknown>);
+  start(): void;
+  stop(timeout?: number): Promise<void>;
 }
 
-/**
- * Parsed systemd unit file content metadata.
- */
-export interface ParsedUnitContent {
-  command?: string;
-  args?: string[];
-  script?: string;
-  cwd?: string;
-  restart?: string;
-  memoryHigh?: string;
-  memoryMax?: string;
-  memorySwapMax?: string;
+export class ServiceManager {
+  constructor(opts?: { platform?: string; adapter?: ServiceAdapter });
+  readonly capabilities: PlatformCapabilities;
+  generate(rawOpts?: CreateServiceOptions): Promise<string | Record<string, unknown>>;
+  install(rawOpts: CreateServiceOptions): Promise<{ name: string; unitPath?: string; serviceName?: string }>;
+  uninstall(name: string, options?: { force?: boolean; system?: boolean }): Promise<boolean>;
+  start(name: string, options?: { enable?: boolean; system?: boolean }): Promise<boolean>;
+  stop(name: string, options?: { system?: boolean }): Promise<boolean>;
+  restart(name: string, options?: { system?: boolean }): Promise<boolean>;
+  enable(name: string, options?: { system?: boolean }): Promise<boolean>;
+  disable(name: string, options?: { system?: boolean }): Promise<boolean>;
+  status(name: string, options?: { system?: boolean }): Promise<ServiceStatus>;
+  inspect(name: string, options?: { system?: boolean }): Promise<Record<string, unknown>>;
+  logs(name: string, options?: LogOptions): Promise<string | EventEmitter | ChildProcess>;
+  list(options?: { group?: string }): Promise<Array<Record<string, unknown>>>;
+  failures(options?: Record<string, unknown>): Promise<ServiceFailure[]>;
+  isInstalled(name: string, options?: Record<string, unknown>): Promise<boolean> | boolean;
 }
 
-/**
- * Command runner function definition used for internal mocking.
- */
-export type CommandRunnerFn = (
-  cmd: string,
-  args: string[],
-  opts?: Record<string, unknown>
-) => Promise<{ stdout: string; stderr: string; code: number }>;
+export const defaultManager: ServiceManager;
 
-// ---------------------------------------------------------------------------
-// Programmatic API Function Declarations
-// ---------------------------------------------------------------------------
+// Unified API functions
+export function install(options: CreateServiceOptions): Promise<{ name: string; unitPath?: string }>;
+export function uninstall(name: string, options?: { force?: boolean; system?: boolean }): Promise<boolean>;
+export function start(name: string, options?: { enable?: boolean; system?: boolean }): Promise<boolean>;
+export function stop(name: string, options?: { system?: boolean }): Promise<boolean>;
+export function restart(name: string, options?: { system?: boolean }): Promise<boolean>;
+export function status(name: string, options?: { system?: boolean }): Promise<ServiceStatus>;
+export function list(options?: { group?: string }): Promise<Array<Record<string, unknown>>>;
+export function inspect(name: string, options?: { system?: boolean }): Promise<Record<string, unknown>>;
+export function logs(name: string, options?: LogOptions): Promise<string | EventEmitter | ChildProcess>;
+export function enable(name: string, options?: { system?: boolean }): Promise<boolean>;
+export function disable(name: string, options?: { system?: boolean }): Promise<boolean>;
+export function platform(targetPlatform?: string): PlatformCapabilities;
 
-export function createService(options: CreateServiceOptions): Promise<AddServiceResult>;
-export function addService(options: CreateServiceOptions): Promise<AddServiceResult>;
+export function getAdapter(platform?: string, options?: Record<string, unknown>): ServiceAdapter;
+export function getPlatformCapabilities(platform?: string): PlatformCapabilities;
+export function normalizeServiceConfig(rawOpts?: Record<string, unknown>): Promise<NormalizedServiceConfig>;
+export function resolveExecutable(binaryName: string, opts?: { cwd?: string; pathEnv?: string }): string | null;
+export function readServiceLogs(filePaths: string | string[], options?: LogOptions): Promise<string | EventEmitter>;
+
+// Backward-compatible API
+export function createService(options: CreateServiceOptions): Promise<{ name: string; unitPath: string }>;
+export function addService(options: CreateServiceOptions): Promise<{ name: string; unitPath: string }>;
 export function startService(name: string, enable?: boolean): Promise<boolean>;
 export function stopService(name: string): Promise<boolean>;
 export function restartService(name: string): Promise<boolean>;
-export function removeService(name: string, options?: { force?: boolean } | boolean): Promise<boolean>;
-export function getServiceStatus(name: string): Promise<ServiceStatus>;
+export function removeService(name: string, options?: boolean | { force?: boolean }): Promise<boolean>;
+export function getServiceStatus(name: string): Promise<Record<string, unknown>>;
 export function getServiceStatusRaw(name: string): Promise<string>;
-export function listServices(options?: { group?: string }): Promise<ListServiceItem[]>;
-export function inspectService(name: string): Promise<InspectInfo>;
-export function getServiceFailures(): Promise<FailureItem[]>;
+export function listServices(filterOpts?: { group?: string }): Promise<Array<Record<string, unknown>>>;
+export function inspectService(name: string): Promise<Record<string, unknown>>;
+export function getServiceFailures(): Promise<ServiceFailure[]>;
 export function getServicesByGroup(groupName: string): Promise<string[]>;
-export function setServiceLimits(name: string, options?: ServiceLimitsOptions): Promise<InspectInfo>;
-export function getServiceMemoryUsage(name: string): Promise<{
-  name: string;
-  group: string;
-  type: string;
-  status: string;
-  pid: string;
-  memoryBytes: number;
-  memory: string;
-  memoryPeak: string;
-  memoryHigh: string;
-  memoryMax: string;
-  memorySwapMax: string;
-}>;
-export function getAllServicesMemoryUsage(options?: { group?: string }): Promise<{
-  items: Array<{
-    name: string;
-    group: string;
-    type: string;
-    status: string;
-    pid: string;
-    memory: string;
-    memoryPeak: string;
-    memoryMax: string;
-    memoryHigh: string;
-    memoryBytes: number;
-  }>;
-  totalBytes: number;
-  totalMemory: string;
-  runningCount: number;
-}>;
-export function executeJournalctlMaintenance(action: string, options?: Record<string, unknown>): Promise<string>;
-export function getServiceLogs(name: string, options?: LogOptions): Promise<string | ChildProcess>;
+export function setServiceLimits(name: string, options?: Record<string, unknown>): Promise<Record<string, unknown>>;
+export function getServiceMemoryUsage(name: string): Promise<Record<string, unknown>>;
+export function getAllServicesMemoryUsage(opts?: { group?: string }): Promise<Record<string, unknown>>;
+export function executeJournalctlMaintenance(action: string, opts?: Record<string, unknown>): Promise<string>;
+export function getServiceLogs(name: string, opts?: LogOptions): Promise<string | ChildProcess>;
+export function runJournalctlLogs(name: string, opts?: LogOptions): Promise<string | ChildProcess>;
 
-// Validation & Formatting Helpers
-export function validateMemorySize(val: string | number, paramName?: string): string;
+// Runtimes & Helpers
+export function detectRuntime(filepath: string, opts?: Record<string, unknown>): string;
+export function resolveRuntimeConfig(
+  opts?: Record<string, unknown>
+): Promise<{ command: string; args: string[]; runtime: string; version: string }>;
+export function sanitizeServiceName(name: string): string;
+export function formatTable(
+  data: Array<Record<string, unknown>>,
+  columns: Array<{ key: string; label: string }>
+): string;
 export function formatMemoryBytes(bytes: number | string): string;
+export function validateMemorySize(val: string | number, paramName?: string): string;
+export function validateDuration(val: string | number, paramName?: string): string;
 
-// Runtime Helpers
-export function detectRuntime(filepath: string): string;
-export function resolveRuntimeConfig(options: CreateServiceOptions): Promise<{
-  command: string;
-  args: string[];
-  runtime: string;
-  version: string;
-}>;
+// Config helpers
+export function findProjectConfig(dirPath?: string): string | null;
+export function readProjectConfig(filePathOrDir?: string): Record<string, unknown> | null;
+export function saveProjectConfig(dirPathOrFile?: string, config?: Record<string, unknown>): string;
+export function readAppMetadata(name: string): AppMetadata | null;
+export function getAppMetadataPath(name: string): string;
+export function getAppsDir(): string;
+export function getUnitupDir(): string;
+export function readGlobalConfig(): Record<string, unknown>;
+export function saveGlobalConfig(config: Record<string, unknown>): Record<string, unknown>;
+export function getConfigFilepath(): string;
+export function resolveEffectiveMemoryLimits(opts?: Record<string, unknown>): {
+  memoryHigh?: string;
+  memoryMax?: string;
+  memorySwapMax?: string;
+};
 
-// Diagnostics & Doctor
+// Doctor & Diagnostics
 export function isSystemdAvailable(): Promise<boolean>;
 export function isSystemctlAvailable(): Promise<boolean>;
 export function isLinux(): boolean;
 export function isSystemdPID1(): Promise<boolean>;
 export function isUserSystemdAvailable(): Promise<boolean>;
 export function checkUserLinger(): Promise<boolean>;
-export function checkNodeDiagnostics(customNodePath?: string): Promise<NodeDiagnostics>;
+export function checkNodeDiagnostics(customNodePath?: string): Promise<Record<string, unknown>>;
 export function findNodeExecutable(customPath?: string): Promise<string | null>;
-export function getDoctorInfo(): Promise<DoctorInfo>;
+export function getDoctorInfo(): Promise<Record<string, unknown>>;
+export function runDoctor(): Promise<Record<string, unknown>>;
 
-export interface ProjectConfig {
-  name?: string;
-  group?: string;
-  script?: string;
-  command?: string;
-  runtime?: string;
-  runtimeArgs?: string[];
-  args?: string[];
-  env?: Record<string, string>;
-  envFile?: string;
-  restart?: string;
-  resources?: {
-    memoryHigh?: string;
-    memoryMax?: string;
-    memorySwapMax?: string;
-  };
-  memoryHigh?: string;
-  memoryMax?: string;
-  memorySwapMax?: string;
-}
+// Testing runner overrides
+export type CommandRunnerFn = (
+  cmd: string,
+  args: string[],
+  opts?: Record<string, unknown>
+) => Promise<{ stdout: string; stderr: string; code: number }>;
+export function setCommandRunner(runner: CommandRunnerFn): void;
+export function resetCommandRunner(): void;
+export function runCommand(
+  cmd: string,
+  args: string[],
+  opts?: Record<string, unknown>
+): Promise<{ stdout: string; stderr: string; code: number }>;
 
-export function findProjectConfig(dirPath?: string): string | null;
-export function readProjectConfig(filePathOrDir?: string): ProjectConfig | null;
-export function saveProjectConfig(dirPathOrFile?: string, config?: ProjectConfig): string;
-
-// Path & Unit Helpers
+// Unit / Plist helpers
 export function getUserUnitDir(): string;
 export function getUnitPath(name: string): string;
 export function unitFileExists(name: string): boolean;
-export function parseUnitContent(content: string): ParsedUnitContent;
-export function sanitizeServiceName(name: string): string;
+export function parseUnitContent(content: string): Record<string, unknown>;
 export function getUnitFilename(name: string): string;
+export function getTimerFilename(name: string): string;
 export function getServiceNameFromUnit(unitFilename: string): string;
-export function readAppMetadata(name: string): AppMetadata | null;
-export function getAppMetadataPath(name: string): string;
-export function getAppsDir(): string;
-export function getUnitupDir(): string;
+export function generateTimerContent(opts: Record<string, unknown>): string;
+export function generateScheduleServiceContent(opts: Record<string, unknown>): string;
+export function getTimerPath(name: string): string;
+export function timerFileExists(name: string): boolean;
 
-// Testing Mock Helpers
-export function setCommandRunner(runner: CommandRunnerFn): void;
-export function resetCommandRunner(): void;
-
-// ---------------------------------------------------------------------------
-// Schedule Management API
-// ---------------------------------------------------------------------------
-
-export interface CreateScheduleOptions {
-  name?: string;
-  script?: string;
-  command?: string;
-  runtime?: string;
-  args?: string[];
-  runtimeArgs?: string[];
-  cwd?: string;
-  env?: Record<string, string> | string[];
-  envFile?: string;
-  group?: string;
-  memoryHigh?: string;
-  memoryMax?: string;
-  memorySwapMax?: string;
-  defaultMemory?: string | boolean;
-  every?: string;
-  calendar?: string;
-  onBoot?: string;
-  onActive?: string;
-  randomDelay?: string;
-  persistent?: boolean;
-  start?: boolean;
-  enable?: boolean;
-}
-
-export interface ScheduleMetadata {
-  name: string;
-  group: string;
-  type: string;
-  runtime: string;
-  command: string;
-  args: string[];
-  cwd: string;
-  schedule: {
-    every: string | null;
-    calendar: string | null;
-    onBoot: string | null;
-    onActive: string | null;
-    persistent: boolean;
-    randomDelay: string | null;
-  };
-  serviceUnit: string;
-  timerUnit: string;
-}
-
-export interface ScheduleStatus {
-  name: string;
-  group: string;
-  schedule: string;
-  nextRun: string;
-  lastRun: string;
-  status: string;
-  activeState: string;
-  subState: string;
-  unitFileState: string;
-  serviceActiveState: string;
-  metadata?: ScheduleMetadata | null;
-  serviceUnit: string;
-  timerUnit: string;
-}
-
-export interface CreateScheduleResult {
-  name: string;
-  group: string;
-  type: string;
-  runtime: string;
-  command: string;
-  args: string[];
-  cwd: string;
-  schedule: Record<string, unknown>;
-  serviceUnit: string;
-  timerUnit: string;
-  servicePath: string;
-  timerPath: string;
-}
-
-export function createSchedule(options: CreateScheduleOptions): Promise<CreateScheduleResult>;
-export function listSchedules(group?: string): Promise<ScheduleStatus[]>;
-export function getScheduleStatus(name: string): Promise<ScheduleStatus>;
+// Schedules
+export function createSchedule(options: Record<string, unknown>): Promise<Record<string, unknown>>;
+export function listSchedules(group?: string): Promise<Array<Record<string, unknown>>>;
+export function getScheduleStatus(name: string): Promise<Record<string, unknown>>;
 export function runSchedule(name: string): Promise<boolean>;
 export function enableSchedule(name: string): Promise<boolean>;
 export function disableSchedule(name: string): Promise<boolean>;
 export function removeSchedule(name: string, options?: { force?: boolean }): Promise<boolean>;
 export function validateCalendar(expression: string): Promise<{ valid: boolean; error?: string; warning?: string }>;
-export function validateDuration(val: string | number, paramName?: string): string;
-export function getTimerFilename(name: string): string;
-export function getTimerPath(name: string): string;
-export function timerFileExists(name: string): boolean;
-export function readScheduleMetadata(name: string): ScheduleMetadata | null;
+export function readScheduleMetadata(name: string): Record<string, unknown> | null;
 export function getScheduleMetadataPath(name: string): string;
 export function getSchedulesDir(): string;
-export function readGlobalConfig(): Record<string, unknown>;
-export function saveGlobalConfig(config: Record<string, unknown>): Record<string, unknown>;
-export function getConfigFilepath(): string;
-export function resolveEffectiveMemoryLimits(opts?: Record<string, unknown>): { memoryHigh?: string; memoryMax?: string; memorySwapMax?: string };
 
-
+export default defaultManager;

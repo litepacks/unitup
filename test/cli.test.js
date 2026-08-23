@@ -1,5 +1,5 @@
-import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
 import { parseArgs } from '../src/cli.js';
 
 describe('cli.js argument parser', () => {
@@ -13,15 +13,24 @@ describe('cli.js argument parser', () => {
     const res = parseArgs([
       'add',
       'server.js',
-      '--name', 'api',
-      '--node', '/usr/bin/node',
-      '--cwd', './backend',
-      '--env', 'NODE_ENV=production',
-      '--env', 'PORT=3000',
-      '--env-file', '.env',
-      '--restart', 'always',
-      '--arg', '--port',
-      '--arg', '3000',
+      '--name',
+      'api',
+      '--node',
+      '/usr/bin/node',
+      '--cwd',
+      './backend',
+      '--env',
+      'NODE_ENV=production',
+      '--env',
+      'PORT=3000',
+      '--env-file',
+      '.env',
+      '--restart',
+      'always',
+      '--arg',
+      '--port',
+      '--arg',
+      '3000',
       '--start'
     ]);
 

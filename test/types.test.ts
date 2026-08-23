@@ -1,34 +1,34 @@
 import {
-  createService,
-  startService,
-  stopService,
-  restartService,
-  removeService,
-  getServiceStatus,
-  listServices,
-  getServiceLogs,
-  isSystemdAvailable,
-  isLinux,
-  isSystemdPID1,
-  isUserSystemdAvailable,
-  checkUserLinger,
+  type CreateServiceOptions,
+  type DoctorInfo,
+  type ListServiceItem,
+  type NodeDiagnostics,
+  type ServiceStatus,
   checkNodeDiagnostics,
+  checkUserLinger,
+  createService,
   findNodeExecutable,
   getDoctorInfo,
-  getUserUnitDir,
-  getUnitPath,
-  unitFileExists,
-  parseUnitContent,
-  sanitizeServiceName,
-  getUnitFilename,
+  getServiceLogs,
   getServiceNameFromUnit,
-  setCommandRunner,
+  getServiceStatus,
+  getUnitFilename,
+  getUnitPath,
+  getUserUnitDir,
+  isLinux,
+  isSystemdAvailable,
+  isSystemdPID1,
+  isUserSystemdAvailable,
+  listServices,
+  parseUnitContent,
+  removeService,
   resetCommandRunner,
-  CreateServiceOptions,
-  ServiceStatus,
-  ListServiceItem,
-  DoctorInfo,
-  NodeDiagnostics
+  restartService,
+  sanitizeServiceName,
+  setCommandRunner,
+  startService,
+  stopService,
+  unitFileExists
 } from '../index.js';
 
 // Compile-time type assertion checks
@@ -81,7 +81,20 @@ async function typeCheckTest() {
   const unitFile: string = getUnitFilename('test');
   const serviceName: string = getServiceNameFromUnit('unitup-test.service');
 
-  console.log(dir, pathStr, exists, clean, unitFile, serviceName, pid1, userSys, linger, doctor.username, nodeDiag.found, nodePathStr);
+  console.log(
+    dir,
+    pathStr,
+    exists,
+    clean,
+    unitFile,
+    serviceName,
+    pid1,
+    userSys,
+    linger,
+    doctor.username,
+    nodeDiag.found,
+    nodePathStr
+  );
 }
 
 typeCheckTest().catch(() => {});

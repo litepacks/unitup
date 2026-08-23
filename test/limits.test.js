@@ -1,18 +1,18 @@
-import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { describe, test } from 'node:test';
 import {
-  validateMemorySize,
-  formatMemoryBytes,
   createService,
-  setServiceLimits,
+  formatMemoryBytes,
   getServiceStatus,
   inspectService,
   readAppMetadata,
+  resetCommandRunner,
   setCommandRunner,
-  resetCommandRunner
+  setServiceLimits,
+  validateMemorySize
 } from '../src/index.js';
 import { generateUnitContent, parseUnitContent } from '../src/unit.js';
 
@@ -115,12 +115,13 @@ describe('Systemd-Native Memory Limits Suite', () => {
     const dummyScript = path.join(tmpDir, 'limits-app.js');
     fs.writeFileSync(dummyScript, 'console.log("hi");');
 
-    let executedCommands = [];
+    const executedCommands = [];
     setCommandRunner(async (cmd, args) => {
       executedCommands.push({ cmd, args });
       if (cmd === 'systemctl' && args.includes('show')) {
         return {
-          stdout: 'ActiveState=active\nSubState=running\nMainPID=1234\nNRestarts=0\nMemoryCurrent=297795584\nMemoryPeak=378535936\nMemoryHigh=419430400\nMemoryMax=536870912\n',
+          stdout:
+            'ActiveState=active\nSubState=running\nMainPID=1234\nNRestarts=0\nMemoryCurrent=297795584\nMemoryPeak=378535936\nMemoryHigh=419430400\nMemoryMax=536870912\n',
           stderr: '',
           code: 0
         };
@@ -156,7 +157,7 @@ describe('Systemd-Native Memory Limits Suite', () => {
 
   test('resolveEffectiveMemoryLimits with defaultMemory 1GB', async () => {
     const { resolveEffectiveMemoryLimits, saveGlobalConfig } = await import('../src/index.js');
-    
+
     // Explicit limit overrides default
     assert.deepEqual(resolveEffectiveMemoryLimits({ memoryMax: '512M', defaultMemory: '1G' }), { memoryMax: '512M' });
 
@@ -183,7 +184,8 @@ describe('Systemd-Native Memory Limits Suite', () => {
     setCommandRunner(async (cmd, args) => {
       if (args.includes('show') && args.includes('unitup-top-app.service')) {
         return {
-          stdout: 'ActiveState=active\nSubState=running\nMainPID=9999\nMemoryCurrent=524288000\nMemoryPeak=629145600\nMemoryMax=1073741824\n',
+          stdout:
+            'ActiveState=active\nSubState=running\nMainPID=9999\nMemoryCurrent=524288000\nMemoryPeak=629145600\nMemoryMax=1073741824\n',
           stderr: '',
           code: 0
         };
@@ -204,7 +206,7 @@ describe('Systemd-Native Memory Limits Suite', () => {
     assert.equal(mem.memory, '500 MB');
 
     const overview = await getAllServicesMemoryUsage();
-    assert.ok(overview.items.some(i => i.name === 'top-app'));
+    assert.ok(overview.items.some((i) => i.name === 'top-app'));
     assert.ok(overview.totalBytes >= 524288000);
 
     resetCommandRunner();

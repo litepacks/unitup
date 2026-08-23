@@ -1,18 +1,18 @@
-import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { describe, test } from 'node:test';
 import {
   createService,
-  startService,
-  stopService,
-  restartService,
-  removeService,
   getServiceStatus,
-  listServices,
   isLinux,
-  isSystemdAvailable
+  isSystemdAvailable,
+  listServices,
+  removeService,
+  restartService,
+  startService,
+  stopService
 } from '../src/index.js';
 
 const isIntegration = process.env.UNITUP_INTEGRATION_TEST === '1';
@@ -50,7 +50,7 @@ describe('Real Systemd Integration Test Suite', { skip: !isIntegration }, () => 
 
     // List services
     const services = await listServices();
-    const found = services.find(s => s.name === serviceName);
+    const found = services.find((s) => s.name === serviceName);
     assert.ok(found, 'Service should appear in listServices()');
 
     // Restart service
@@ -64,7 +64,7 @@ describe('Real Systemd Integration Test Suite', { skip: !isIntegration }, () => 
 
     // Verify removed
     const servicesAfter = await listServices();
-    const foundAfter = servicesAfter.find(s => s.name === serviceName);
+    const foundAfter = servicesAfter.find((s) => s.name === serviceName);
     assert.equal(foundAfter, undefined, 'Service should no longer be listed after removal');
 
     // Clean test script file

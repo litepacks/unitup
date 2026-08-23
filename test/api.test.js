@@ -1,19 +1,19 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import {
   createService,
+  getServiceStatus,
+  getUserUnitDir,
+  listServices,
+  removeService,
+  resetCommandRunner,
+  restartService,
+  setCommandRunner,
   startService,
   stopService,
-  restartService,
-  removeService,
-  getServiceStatus,
-  listServices,
-  setCommandRunner,
-  resetCommandRunner,
-  getUserUnitDir,
   unitFileExists
 } from '../src/index.js';
 
@@ -31,7 +31,8 @@ describe('Programmatic API with Mocked Systemctl', () => {
       if (cmd === 'systemctl' && args.includes('show')) {
         return {
           code: 0,
-          stdout: 'ActiveState=active\nSubState=running\nMainPID=12345\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
+          stdout:
+            'ActiveState=active\nSubState=running\nMainPID=12345\nNRestarts=0\nActiveEnterTimestamp=2026-07-26 10:00:00 UTC\nUnitFileState=enabled\n',
           stderr: ''
         };
       }
@@ -65,8 +66,8 @@ describe('Programmatic API with Mocked Systemctl', () => {
     const content = fs.readFileSync(unitPath, 'utf8');
     assert.match(content, /ExecStart=.*dummy\.js/);
 
-    assert.ok(executedCommands.some(c => c.cmd === 'systemctl' && c.args.includes('daemon-reload')));
-    assert.ok(executedCommands.some(c => c.cmd === 'systemctl' && c.args.includes('enable')));
+    assert.ok(executedCommands.some((c) => c.cmd === 'systemctl' && c.args.includes('daemon-reload')));
+    assert.ok(executedCommands.some((c) => c.cmd === 'systemctl' && c.args.includes('enable')));
   });
 
   test('startService, stopService, restartService execute appropriate systemctl commands', async () => {
@@ -131,15 +132,12 @@ describe('Programmatic API with Mocked Systemctl', () => {
 
     assert.equal(unitFileExists('to-remove'), false);
 
-    assert.ok(executedCommands.some(c => c.args.includes('disable')));
-    assert.ok(executedCommands.some(c => c.args.includes('daemon-reload')));
-    assert.ok(executedCommands.some(c => c.args.includes('reset-failed')));
+    assert.ok(executedCommands.some((c) => c.args.includes('disable')));
+    assert.ok(executedCommands.some((c) => c.args.includes('daemon-reload')));
+    assert.ok(executedCommands.some((c) => c.args.includes('reset-failed')));
   });
 
   test('throws meaningful error when service does not exist', async () => {
-    await assert.rejects(
-      async () => await startService('non-existent'),
-      /Service "non-existent" does not exist/
-    );
+    await assert.rejects(async () => await startService('non-existent'), /Service "non-existent" does not exist/);
   });
 });

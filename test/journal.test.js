@@ -1,14 +1,14 @@
-import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { describe, test } from 'node:test';
 import {
-  getServiceLogs,
+  createService,
   executeJournalctlMaintenance,
-  setCommandRunner,
+  getServiceLogs,
   resetCommandRunner,
-  createService
+  setCommandRunner
 } from '../src/index.js';
 
 describe('Journald & Log Maintenance Suite', () => {

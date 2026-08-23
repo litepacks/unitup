@@ -1,14 +1,10 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
-import {
-  findProjectConfig,
-  readProjectConfig,
-  saveProjectConfig
-} from '../src/utils.js';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import { parseArgs, runCli } from '../src/cli.js';
+import { findProjectConfig, readProjectConfig, saveProjectConfig } from '../src/utils.js';
 
 describe('Project Configuration (unitup.config.json)', () => {
   let tmpDir;
@@ -67,7 +63,18 @@ describe('Project Configuration (unitup.config.json)', () => {
     fs.writeFileSync(scriptPath, 'console.log("hello");', 'utf8');
 
     // Run CLI init with --cwd
-    await runCli(['init', 'app.js', '--cwd', tmpDir, '--name', 'test-init', '--memory-max', '256M', '--env', 'ENV=test']);
+    await runCli([
+      'init',
+      'app.js',
+      '--cwd',
+      tmpDir,
+      '--name',
+      'test-init',
+      '--memory-max',
+      '256M',
+      '--env',
+      'ENV=test'
+    ]);
 
     const configFile = path.join(tmpDir, 'unitup.config.json');
     assert.equal(fs.existsSync(configFile), true);
@@ -81,7 +88,9 @@ describe('Project Configuration (unitup.config.json)', () => {
 
   test('Config Change Reflection: updating unitup.config.json and re-adding updates unit file and app metadata', async () => {
     const executedCommands = [];
-    const { setCommandRunner, resetCommandRunner, addService, getUserUnitDir, readAppMetadata } = await import('../src/index.js');
+    const { setCommandRunner, resetCommandRunner, addService, getUserUnitDir, readAppMetadata } = await import(
+      '../src/index.js'
+    );
 
     process.env.XDG_CONFIG_HOME = tmpDir;
 
@@ -138,7 +147,7 @@ describe('Project Configuration (unitup.config.json)', () => {
 
       meta = readAppMetadata('reflect-service');
       assert.equal(meta.resources?.memoryMax || meta.memoryMax, '512M');
-      assert.ok(executedCommands.some(c => c.cmd === 'systemctl' && c.args.includes('daemon-reload')));
+      assert.ok(executedCommands.some((c) => c.cmd === 'systemctl' && c.args.includes('daemon-reload')));
     } finally {
       resetCommandRunner();
       delete process.env.XDG_CONFIG_HOME;
@@ -226,8 +235,12 @@ describe('Project Configuration (unitup.config.json)', () => {
       await addService({ cwd: tmpDir, force: true });
 
       // Verify daemon-reload was executed AND systemctl restart unitup-active-worker.service was invoked
-      assert.ok(executedCommands.some(c => c.cmd === 'systemctl' && c.args.includes('daemon-reload')));
-      assert.ok(executedCommands.some(c => c.cmd === 'systemctl' && c.args.includes('restart') && c.args.includes('unitup-active-worker.service')));
+      assert.ok(executedCommands.some((c) => c.cmd === 'systemctl' && c.args.includes('daemon-reload')));
+      assert.ok(
+        executedCommands.some(
+          (c) => c.cmd === 'systemctl' && c.args.includes('restart') && c.args.includes('unitup-active-worker.service')
+        )
+      );
     } finally {
       resetCommandRunner();
       delete process.env.XDG_CONFIG_HOME;

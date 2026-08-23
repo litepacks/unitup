@@ -1,21 +1,21 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
 import {
-  sanitizeServiceName,
-  getUnitFilename,
-  getTimerFilename,
-  getServiceNameFromUnit,
-  formatSystemdEnv,
-  escapeExecArg,
-  resolveAbsolutePath,
-  resolveWorkingDirectory,
-  saveAppMetadata,
   deleteAppMetadata,
-  saveScheduleMetadata,
   deleteScheduleMetadata,
-  validateDuration,
-  resolveEffectiveMemoryLimits
+  escapeExecArg,
+  formatSystemdEnv,
+  getServiceNameFromUnit,
+  getTimerFilename,
+  getUnitFilename,
+  resolveAbsolutePath,
+  resolveEffectiveMemoryLimits,
+  resolveWorkingDirectory,
+  sanitizeServiceName,
+  saveAppMetadata,
+  saveScheduleMetadata,
+  validateDuration
 } from './utils.js';
 
 /**
@@ -241,7 +241,7 @@ export function parseUnitContent(content) {
     } else if (trimmed.startsWith('ExecStart=')) {
       const execVal = trimmed.slice(10).trim();
       const parts = execVal.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
-      const cleanParts = parts.map(p => p.replace(/^"|"$/g, ''));
+      const cleanParts = parts.map((p) => p.replace(/^"|"$/g, ''));
       if (cleanParts.length > 0) {
         result.command = cleanParts[0];
         result.args = cleanParts.slice(1);
@@ -368,12 +368,7 @@ export function generateScheduleServiceContent(opts) {
 export function generateTimerContent(opts) {
   const safeName = sanitizeServiceName(opts.name);
 
-  const timerLines = [
-    '[Unit]',
-    `Description=unitup timer: ${safeName}`,
-    '',
-    '[Timer]'
-  ];
+  const timerLines = ['[Unit]', `Description=unitup timer: ${safeName}`, '', '[Timer]'];
 
   if (opts.every) {
     const validEvery = validateDuration(opts.every, '--every');
@@ -482,4 +477,3 @@ export function deleteScheduleUnitFiles(name) {
   }
   return removed;
 }
-

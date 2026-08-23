@@ -1,15 +1,15 @@
-import path from 'node:path';
 import fs from 'node:fs';
-import { createNodeAdapter } from './node.js';
-import { createPythonAdapter } from './python.js';
-import { createRubyAdapter } from './ruby.js';
-import { createPhpAdapter } from './php.js';
+import path from 'node:path';
 import { createBunAdapter } from './bun.js';
 import { createDenoAdapter } from './deno.js';
-import { createShellAdapter } from './shell.js';
-import { createNativeAdapter } from './native.js';
-import { createGoAdapter } from './go.js';
 import { createElixirAdapter } from './elixir.js';
+import { createGoAdapter } from './go.js';
+import { createNativeAdapter } from './native.js';
+import { createNodeAdapter } from './node.js';
+import { createPhpAdapter } from './php.js';
+import { createPythonAdapter } from './python.js';
+import { createRubyAdapter } from './ruby.js';
+import { createShellAdapter } from './shell.js';
 
 export function detectRuntime(filepath, opts = {}) {
   if (!filepath) {

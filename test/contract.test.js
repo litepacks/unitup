@@ -1,42 +1,42 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
-import {
-  createService,
-  getServiceStatus,
-  listServices,
-  inspectService,
-  getServiceFailures,
-  setServiceLimits,
-  getServiceMemoryUsage,
-  getAllServicesMemoryUsage,
-  createSchedule,
-  listSchedules,
-  getScheduleStatus,
-  removeService,
-  getDoctorInfo,
-  setCommandRunner,
-  resetCommandRunner,
-  getUserUnitDir,
-  unitFileExists,
-  parseUnitContent,
-  generateTimerContent,
-  sanitizeServiceName,
-  getUnitFilename,
-  getTimerFilename,
-  getServiceNameFromUnit,
-  readAppMetadata,
-  readScheduleMetadata,
-  readProjectConfig,
-  saveProjectConfig,
-  detectRuntime,
-  resolveRuntimeConfig,
-  validateMemorySize,
-  validateDuration
-} from '../src/index.js';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, test } from 'node:test';
 import { runCli } from '../src/cli.js';
+import {
+  createSchedule,
+  createService,
+  detectRuntime,
+  generateTimerContent,
+  getAllServicesMemoryUsage,
+  getDoctorInfo,
+  getScheduleStatus,
+  getServiceFailures,
+  getServiceMemoryUsage,
+  getServiceNameFromUnit,
+  getServiceStatus,
+  getTimerFilename,
+  getUnitFilename,
+  getUserUnitDir,
+  inspectService,
+  listSchedules,
+  listServices,
+  parseUnitContent,
+  readAppMetadata,
+  readProjectConfig,
+  readScheduleMetadata,
+  removeService,
+  resetCommandRunner,
+  resolveRuntimeConfig,
+  sanitizeServiceName,
+  saveProjectConfig,
+  setCommandRunner,
+  setServiceLimits,
+  unitFileExists,
+  validateDuration,
+  validateMemorySize
+} from '../src/index.js';
 
 describe('unitup Comprehensive Contract Test Suite', () => {
   let tmpDir;
@@ -55,16 +55,17 @@ describe('unitup Comprehensive Contract Test Suite', () => {
       if (cmd === 'systemctl' && args.includes('show')) {
         return {
           code: 0,
-          stdout: [
-            'ActiveState=active',
-            'SubState=running',
-            'MainPID=9999',
-            'NRestarts=2',
-            'ActiveEnterTimestamp=2026-08-01 12:00:00 UTC',
-            'UnitFileState=enabled',
-            'Result=success',
-            'ExecMainCode=0'
-          ].join('\n') + '\n',
+          stdout:
+            [
+              'ActiveState=active',
+              'SubState=running',
+              'MainPID=9999',
+              'NRestarts=2',
+              'ActiveEnterTimestamp=2026-08-01 12:00:00 UTC',
+              'UnitFileState=enabled',
+              'Result=success',
+              'ExecMainCode=0'
+            ].join('\n') + '\n',
           stderr: ''
         };
       }
@@ -138,7 +139,7 @@ describe('unitup Comprehensive Contract Test Suite', () => {
       assert.ok(Array.isArray(list));
       assert.ok(list.length >= 1);
 
-      const item = list.find(s => s.name === 'list-contract');
+      const item = list.find((s) => s.name === 'list-contract');
       assert.ok(item);
       assert.equal(typeof item.name, 'string');
       assert.equal(typeof item.runtime, 'string');
@@ -366,7 +367,9 @@ describe('unitup Comprehensive Contract Test Suite', () => {
 
       let cliOutput = '';
       const origLog = console.log;
-      console.log = (msg) => { cliOutput += msg + '\n'; };
+      console.log = (msg) => {
+        cliOutput += msg + '\n';
+      };
 
       try {
         await runCli(['ls']);
@@ -389,7 +392,9 @@ describe('unitup Comprehensive Contract Test Suite', () => {
 
       let cliOutput = '';
       const origLog = console.log;
-      console.log = (msg) => { cliOutput += msg + '\n'; };
+      console.log = (msg) => {
+        cliOutput += msg + '\n';
+      };
 
       try {
         await runCli(['inspect', 'cli-inspect-app']);
@@ -415,7 +420,7 @@ describe('unitup Comprehensive Contract Test Suite', () => {
       const parsed = JSON.parse(jsonStr);
 
       assert.ok(Array.isArray(parsed));
-      assert.ok(parsed.some(item => item.name === 'api-serialize-app'));
+      assert.ok(parsed.some((item) => item.name === 'api-serialize-app'));
     });
 
     test('CLI unknown command sets exitCode to 1', async () => {
@@ -509,12 +514,13 @@ describe('unitup Comprehensive Contract Test Suite', () => {
       fs.writeFileSync(scriptPath, 'console.log(1);');
 
       await assert.rejects(
-        async () => await createSchedule({
-          name: 'invalid-schedule',
-          script: scriptPath,
-          every: '10m',
-          calendar: 'daily'
-        }),
+        async () =>
+          await createSchedule({
+            name: 'invalid-schedule',
+            script: scriptPath,
+            every: '10m',
+            calendar: 'daily'
+          }),
         /Cannot use both --every and --calendar/
       );
     });

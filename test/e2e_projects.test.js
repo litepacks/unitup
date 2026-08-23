@@ -1,20 +1,20 @@
-import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, test } from 'node:test';
+import { runCli } from '../src/cli.js';
 import {
   addService,
+  getUnitPath,
   inspectService,
   listServices,
-  getUnitPath,
   parseUnitContent,
   removeService,
-  setCommandRunner,
-  resetCommandRunner
+  resetCommandRunner,
+  setCommandRunner
 } from '../src/index.js';
 import { readAppMetadata, readProjectConfig, saveProjectConfig } from '../src/utils.js';
-import { runCli } from '../src/cli.js';
 
 describe('Multi-Project End-to-End (E2E) Isolation Suite', () => {
   let tmpRoot;
@@ -89,8 +89,14 @@ describe('Multi-Project End-to-End (E2E) Isolation Suite', () => {
 
     // ExecStart MUST point to projAlpha/server.js, NOT process.cwd() (projBeta/server.js)
     assert.ok(unitContent.includes('server.js'), 'Unit file ExecStart should contain server.js');
-    assert.ok(unitContent.includes(realProjAlpha) || unitContent.includes(projAlpha), 'Unit file ExecStart should contain projAlpha path');
-    assert.ok(!unitContent.includes(realProjBeta) && !unitContent.includes(projBeta), 'Unit file ExecStart should NOT contain projBeta path');
+    assert.ok(
+      unitContent.includes(realProjAlpha) || unitContent.includes(projAlpha),
+      'Unit file ExecStart should contain projAlpha path'
+    );
+    assert.ok(
+      !unitContent.includes(realProjBeta) && !unitContent.includes(projBeta),
+      'Unit file ExecStart should NOT contain projBeta path'
+    );
 
     // WorkingDirectory MUST be projAlpha
     const parsed = parseUnitContent(unitContent);
@@ -168,13 +174,13 @@ describe('Multi-Project End-to-End (E2E) Isolation Suite', () => {
     assert.equal(fs.realpathSync(inspectA.cwd), fs.realpathSync(projAlpha));
     assert.ok(
       inspectA.arguments.includes(path.join(fs.realpathSync(projAlpha), 'server.js')) ||
-      inspectA.arguments.includes(path.join(projAlpha, 'server.js'))
+        inspectA.arguments.includes(path.join(projAlpha, 'server.js'))
     );
 
     assert.equal(fs.realpathSync(inspectB.cwd), fs.realpathSync(projBeta));
     assert.ok(
       inspectB.arguments.includes(path.join(fs.realpathSync(projBeta), 'server.js')) ||
-      inspectB.arguments.includes(path.join(projBeta, 'server.js'))
+        inspectB.arguments.includes(path.join(projBeta, 'server.js'))
     );
   });
 });

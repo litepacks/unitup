@@ -1,26 +1,26 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
 import {
   createSchedule,
-  listSchedules,
-  getScheduleStatus,
-  runSchedule,
-  enableSchedule,
   disableSchedule,
-  removeSchedule,
-  validateDuration,
-  validateCalendar,
-  readScheduleMetadata,
-  getUserUnitDir,
+  enableSchedule,
+  generateScheduleServiceContent,
+  generateTimerContent,
+  getScheduleStatus,
   getTimerPath,
   getUnitPath,
-  setCommandRunner,
+  getUserUnitDir,
+  listSchedules,
+  readScheduleMetadata,
+  removeSchedule,
   resetCommandRunner,
-  generateTimerContent,
-  generateScheduleServiceContent
+  runSchedule,
+  setCommandRunner,
+  validateCalendar,
+  validateDuration
 } from '../src/index.js';
 
 const testDir = path.join(os.tmpdir(), `unitup-schedule-test-${Date.now()}`);
@@ -165,9 +165,9 @@ test('createSchedule lifecycle and metadata storage', async () => {
   assert.equal(meta.timerUnit, 'unitup-cleanup.timer');
 
   // Verify systemctl commands run on start
-  assert.ok(executedCmds.some(c => c.args.includes('daemon-reload')));
-  assert.ok(executedCmds.some(c => c.args.includes('enable') && c.args.includes('unitup-cleanup.timer')));
-  assert.ok(executedCmds.some(c => c.args.includes('start') && c.args.includes('unitup-cleanup.timer')));
+  assert.ok(executedCmds.some((c) => c.args.includes('daemon-reload')));
+  assert.ok(executedCmds.some((c) => c.args.includes('enable') && c.args.includes('unitup-cleanup.timer')));
+  assert.ok(executedCmds.some((c) => c.args.includes('start') && c.args.includes('unitup-cleanup.timer')));
 });
 
 test('Manual schedule-run only starts service unit', async () => {
@@ -192,17 +192,18 @@ test('enableSchedule and disableSchedule', async () => {
   });
 
   await enableSchedule('cleanup');
-  assert.ok(executedCmds.some(c => c.args.includes('enable') && c.args.includes('--now')));
+  assert.ok(executedCmds.some((c) => c.args.includes('enable') && c.args.includes('--now')));
 
   await disableSchedule('cleanup');
-  assert.ok(executedCmds.some(c => c.args.includes('disable') && c.args.includes('--now')));
+  assert.ok(executedCmds.some((c) => c.args.includes('disable') && c.args.includes('--now')));
 });
 
 test('listSchedules and getScheduleStatus', async () => {
   setCommandRunner(async (cmd, args) => {
     if (args.includes('show') && args.includes('unitup-cleanup.timer')) {
       return {
-        stdout: 'ActiveState=active\nSubState=waiting\nNextElapseUSecRealtime=1700000000000000\nLastTriggerUSec=1699990000000000\n',
+        stdout:
+          'ActiveState=active\nSubState=waiting\nNextElapseUSecRealtime=1700000000000000\nLastTriggerUSec=1699990000000000\n',
         stderr: '',
         code: 0
       };
@@ -219,11 +220,11 @@ test('listSchedules and getScheduleStatus', async () => {
   assert.equal(status.schedule, 'every 30m');
 
   const list = await listSchedules();
-  assert.ok(list.some(s => s.name === 'cleanup'));
+  assert.ok(list.some((s) => s.name === 'cleanup'));
 });
 
 test('removeSchedule lifecycle with force flag check', async () => {
-  let isServiceRunning = true;
+  const isServiceRunning = true;
   const executedCmds = [];
 
   setCommandRunner(async (cmd, args) => {
@@ -235,10 +236,7 @@ test('removeSchedule lifecycle with force flag check', async () => {
   });
 
   // Attempt remove without force when running should throw
-  await assert.rejects(
-    removeSchedule('cleanup', { force: false }),
-    /currently running/
-  );
+  await assert.rejects(removeSchedule('cleanup', { force: false }), /currently running/);
 
   // Remove with force should succeed and delete files
   await removeSchedule('cleanup', { force: true });
@@ -252,15 +250,9 @@ test('removeSchedule lifecycle with force flag check', async () => {
 });
 
 test('Shell injection prevention in schedule arguments and names', async () => {
-  assert.throws(
-    () => validateDuration('10m; rm -rf /'),
-    /invalid characters or shell injection/
-  );
+  assert.throws(() => validateDuration('10m; rm -rf /'), /invalid characters or shell injection/);
 
-  await assert.rejects(
-    validateCalendar('daily; reboot'),
-    /invalid characters or shell injection/
-  );
+  await assert.rejects(validateCalendar('daily; reboot'), /invalid characters or shell injection/);
 });
 
 test('createSchedule with memory limits', async () => {
@@ -306,14 +298,17 @@ test('readScheduleMetadata normalizes legacy metadata with node runtime for cust
     fs.mkdirSync(schedulesDir, { recursive: true });
   }
   const legacyMetaPath = path.join(schedulesDir, 'legacy-cmd.json');
-  fs.writeFileSync(legacyMetaPath, JSON.stringify({
-    name: 'legacy-cmd',
-    command: '/bin/bash',
-    runtime: 'node'
-  }), 'utf8');
+  fs.writeFileSync(
+    legacyMetaPath,
+    JSON.stringify({
+      name: 'legacy-cmd',
+      command: '/bin/bash',
+      runtime: 'node'
+    }),
+    'utf8'
+  );
 
   const meta = readScheduleMetadata('legacy-cmd');
   assert.ok(meta);
   assert.equal(meta.runtime, 'custom');
 });
-
