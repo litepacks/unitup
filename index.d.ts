@@ -264,6 +264,40 @@ export interface AppMetadata {
   [key: string]: unknown;
 }
 
+export interface DoctorInfo {
+  platform: string;
+  systemdAvailable: boolean;
+  systemctlAvailable: boolean;
+  linux: boolean;
+  systemdRunning: boolean;
+  userSystemdAvailable: boolean;
+  lingering: boolean;
+  nodePath: string | null;
+  nodeVersion: string | null;
+  nodeValid: boolean;
+  username: string;
+  unitDir: string;
+  unitDirWritable: boolean;
+  [key: string]: unknown;
+}
+
+export interface ListServiceItem {
+  name: string;
+  status: string;
+  enabled?: boolean | string;
+  pid?: string;
+  command?: string;
+  [key: string]: unknown;
+}
+
+export interface NodeDiagnostics {
+  found: boolean;
+  path: string | null;
+  version: string | null;
+  valid: boolean;
+  error?: string;
+}
+
 export interface ServiceFailure {
   name: string;
   group: string;
@@ -385,9 +419,9 @@ export function startService(name: string, enable?: boolean): Promise<boolean>;
 export function stopService(name: string): Promise<boolean>;
 export function restartService(name: string): Promise<boolean>;
 export function removeService(name: string, options?: boolean | { force?: boolean }): Promise<boolean>;
-export function getServiceStatus(name: string): Promise<Record<string, unknown>>;
+export function getServiceStatus(name: string): Promise<ServiceStatus>;
 export function getServiceStatusRaw(name: string): Promise<string>;
-export function listServices(filterOpts?: { group?: string }): Promise<Array<Record<string, unknown>>>;
+export function listServices(filterOpts?: { group?: string }): Promise<ListServiceItem[]>;
 export function inspectService(name: string): Promise<Record<string, unknown>>;
 export function getServiceFailures(): Promise<ServiceFailure[]>;
 export function getServicesByGroup(groupName: string): Promise<string[]>;
@@ -436,10 +470,10 @@ export function isLinux(): boolean;
 export function isSystemdPID1(): Promise<boolean>;
 export function isUserSystemdAvailable(): Promise<boolean>;
 export function checkUserLinger(): Promise<boolean>;
-export function checkNodeDiagnostics(customNodePath?: string): Promise<Record<string, unknown>>;
+export function checkNodeDiagnostics(customNodePath?: string): Promise<NodeDiagnostics>;
 export function findNodeExecutable(customPath?: string): Promise<string | null>;
-export function getDoctorInfo(): Promise<Record<string, unknown>>;
-export function runDoctor(): Promise<Record<string, unknown>>;
+export function getDoctorInfo(): Promise<DoctorInfo>;
+export function runDoctor(): Promise<DoctorInfo>;
 
 // Testing runner overrides
 export type CommandRunnerFn = (
