@@ -288,7 +288,7 @@ describe('unitup Comprehensive Contract Test Suite', () => {
       const unitPath = path.join(getUserUnitDir(), 'unitup-escape-test.service');
       const content = fs.readFileSync(unitPath, 'utf8');
 
-      assert.match(content, /ExecStart=.*"\/.*path with spaces\/app\.js" "--msg=\\"hello world\\"" foo\$bar/);
+      assert.match(content, /ExecStart=.*".*path with spaces.*app\.js" "--msg=\\"hello world\\"" foo\$bar/);
     });
   });
 

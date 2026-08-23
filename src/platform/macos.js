@@ -149,7 +149,19 @@ export class MacOSAdapter extends ServiceAdapter {
    */
   getDomain(system = false) {
     if (system) return 'system';
-    const uid = process.getuid ? process.getuid() : os.userInfo().uid || 501;
+    let uid = 501;
+    if (typeof process.getuid === 'function') {
+      uid = process.getuid();
+    } else {
+      try {
+        const u = os.userInfo();
+        if (u && typeof u.uid === 'number' && u.uid >= 0) {
+          uid = u.uid;
+        }
+      } catch {
+        // ignore
+      }
+    }
     return `gui/${uid}`;
   }
 

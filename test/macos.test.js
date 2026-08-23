@@ -94,7 +94,7 @@ describe('macOS (launchd) Adapter Suite', () => {
     assert.ok(userPath.endsWith('dev.unitup.api-worker.plist'));
 
     const systemPath = adapter.getPlistPath('api-worker', true);
-    assert.equal(systemPath, '/Library/LaunchDaemons/dev.unitup.api-worker.plist');
+    assert.equal(path.normalize(systemPath), path.normalize('/Library/LaunchDaemons/dev.unitup.api-worker.plist'));
   });
 
   test('getDomain returns gui/<uid> for user and system for daemons', () => {

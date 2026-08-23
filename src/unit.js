@@ -241,7 +241,7 @@ export function parseUnitContent(content) {
     } else if (trimmed.startsWith('ExecStart=')) {
       const execVal = trimmed.slice(10).trim();
       const parts = execVal.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
-      const cleanParts = parts.map((p) => p.replace(/^"|"$/g, ''));
+      const cleanParts = parts.map((p) => p.replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
       if (cleanParts.length > 0) {
         result.command = cleanParts[0];
         result.args = cleanParts.slice(1);

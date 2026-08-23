@@ -18,7 +18,7 @@ import {
   resolveRuntimeConfig,
   setCommandRunner
 } from '../src/index.js';
-import { readAppMetadata, saveAppMetadata } from '../src/utils.js';
+import { escapeExecArg, readAppMetadata, saveAppMetadata } from '../src/utils.js';
 
 test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'unitup-runtimes-test-'));
@@ -87,7 +87,7 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
     assert.equal(res.name, 'node-app');
     const unitContent = fs.readFileSync(res.unitPath, 'utf8');
     assert.ok(unitContent.includes('ExecStart='));
-    assert.ok(unitContent.includes(script));
+    assert.ok(unitContent.includes(escapeExecArg(script)));
 
     // Save legacy metadata manually: { node, script }
     const appsDir = path.join(tmpDir, 'unitup', 'apps');
@@ -263,21 +263,23 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
     assert.equal(meta.runtime, 'native');
     assert.equal(meta.command, binFile);
 
-    // Make non-executable
-    fs.chmodSync(binFile, 0o644);
+    // Make non-executable (POSIX only, as Windows NTFS does not track execute bits via chmod)
+    if (process.platform !== 'win32') {
+      fs.chmodSync(binFile, 0o644);
 
-    await assert.rejects(
-      async () => {
-        await addService({
-          name: 'native-fail',
-          script: binFile,
-          runtime: 'native'
-        });
-      },
-      (err) => {
-        return err.message.includes('The executable is not runnable') && err.message.includes('chmod +x');
-      }
-    );
+      await assert.rejects(
+        async () => {
+          await addService({
+            name: 'native-fail',
+            script: binFile,
+            runtime: 'native'
+          });
+        },
+        (err) => {
+          return err.message.includes('The executable is not runnable') && err.message.includes('chmod +x');
+        }
+      );
+    }
   });
 
   await t.test('Generic --command usage without runtime auto-detection', async () => {
@@ -295,7 +297,11 @@ test('Multi-Runtime & Generic Executable Systemd Manager Suite', async (t) => {
     assert.deepEqual(meta.args, [pyScript, '--port', '3000']);
 
     const unitContent = fs.readFileSync(res.unitPath, 'utf8');
-    assert.ok(unitContent.includes('ExecStart=' + path.join(binDir, 'python3') + ' ' + pyScript + ' --port 3000'));
+    assert.ok(
+      unitContent.includes(
+        'ExecStart=' + escapeExecArg(path.join(binDir, 'python3')) + ' ' + escapeExecArg(pyScript) + ' --port 3000'
+      )
+    );
   });
 
   await t.test('CLI add command with generic flags', async () => {

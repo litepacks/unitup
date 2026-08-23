@@ -105,7 +105,7 @@ describe('Multi-Project End-to-End (E2E) Isolation Suite', () => {
     // Verify metadata
     const metaA = readAppMetadata('alpha-service');
     assert.equal(fs.realpathSync(metaA.cwd), realProjAlpha);
-    assert.equal(fs.realpathSync(metaA.args[0]), path.join(realProjAlpha, 'server.js'));
+    assert.equal(fs.realpathSync(metaA.args[0]), fs.realpathSync(path.join(realProjAlpha, 'server.js')));
   });
 
   test('E2E: Adding multiple projects sequentially preserves individual project paths', async () => {
