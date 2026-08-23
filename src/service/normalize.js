@@ -133,7 +133,11 @@ export async function normalizeServiceConfig(rawOpts = {}) {
   const system = !!rawOpts.system;
   const autostart = rawOpts.autostart !== undefined ? !!rawOpts.autostart : true;
   const shutdownTimeout =
-    typeof rawOpts.shutdownTimeout === 'number' && rawOpts.shutdownTimeout > 0 ? rawOpts.shutdownTimeout : 10000;
+    rawOpts.shutdownTimeout !== undefined &&
+    !Number.isNaN(Number(rawOpts.shutdownTimeout)) &&
+    Number(rawOpts.shutdownTimeout) > 0
+      ? Number(rawOpts.shutdownTimeout)
+      : 10000;
 
   // Environment normalization
   const env = {};
@@ -158,14 +162,14 @@ export async function normalizeServiceConfig(rawOpts = {}) {
   } else if (rawOpts.restart && typeof rawOpts.restart === 'object') {
     restartEnabled = rawOpts.restart.enabled !== false;
     restartPolicy = rawOpts.restart.policy || (restartEnabled ? 'on-failure' : 'no');
-    if (typeof rawOpts.restart.delay === 'number') {
-      restartDelay = rawOpts.restart.delay;
+    if (rawOpts.restart.delay !== undefined && !Number.isNaN(Number(rawOpts.restart.delay))) {
+      restartDelay = Number(rawOpts.restart.delay);
     }
-    if (typeof rawOpts.restart.maxRetries === 'number') {
-      maxRetries = rawOpts.restart.maxRetries;
+    if (rawOpts.restart.maxRetries !== undefined && !Number.isNaN(Number(rawOpts.restart.maxRetries))) {
+      maxRetries = Number(rawOpts.restart.maxRetries);
     }
-    if (typeof rawOpts.restart.resetAfter === 'number') {
-      resetAfter = rawOpts.restart.resetAfter;
+    if (rawOpts.restart.resetAfter !== undefined && !Number.isNaN(Number(rawOpts.restart.resetAfter))) {
+      resetAfter = Number(rawOpts.restart.resetAfter);
     }
   }
 

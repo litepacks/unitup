@@ -1,7 +1,7 @@
 {
   "name": "unitup",
   "version": "0.1.5",
-  "description": "Minimal, zero-dependency systemd-native service manager for any runtime, script, or executable",
+  "description": "Minimal, zero-dependency cross-platform native service manager (systemd, launchd, Windows Services) for any runtime, script, or executable",
   "main": "src/index.js",
   "types": "./index.d.ts",
   "type": "module",
@@ -9,7 +9,7 @@
     "unitup": "bin/unitup.js"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --test",
     "lint": "biome check .",
     "format": "biome format --write .",
     "check": "biome check ."
@@ -20,9 +20,15 @@
   },
   "keywords": [
     "systemd",
+    "launchd",
+    "windows-service",
+    "macos",
+    "windows",
+    "cross-platform",
     "service",
     "user-service",
     "systemctl",
+    "launchctl",
     "process-manager",
     "daemon-less",
     "multi-runtime",

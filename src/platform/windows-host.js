@@ -1,8 +1,8 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readAppMetadata, saveAppMetadata } from '../utils.js';
+import { getUnitupDir, readAppMetadata, saveAppMetadata } from '../utils.js';
 
 /**
  * Windows Service Host / Supervisor that manages a child process on Windows.
@@ -18,6 +18,7 @@ export class WindowsServiceHost {
     this.stopping = false;
     this.restartCount = 0;
     this.lastStartTime = null;
+    this.resetTimer = null;
     this.logStreams = [];
   }
 
@@ -25,8 +26,8 @@ export class WindowsServiceHost {
    * Initializes logging streams.
    */
   initLogging() {
-    const stdoutPath = this.config.logs?.stdout || path.join(os.homedir(), '.unitup', 'logs', `${this.name}.log`);
-    const stderrPath = this.config.logs?.stderr || path.join(os.homedir(), '.unitup', 'logs', `${this.name}-error.log`);
+    const stdoutPath = this.config.logs?.stdout || path.join(getUnitupDir(), 'logs', `${this.name}.log`);
+    const stderrPath = this.config.logs?.stderr || path.join(getUnitupDir(), 'logs', `${this.name}-error.log`);
 
     const logDir = path.dirname(stdoutPath);
     if (!fs.existsSync(logDir)) {
@@ -45,10 +46,16 @@ export class WindowsServiceHost {
     if (this.stopping) return;
     this.initLogging();
 
-    const command = this.config.command || process.execPath;
-    const args = Array.isArray(this.config.args) ? this.config.args : [];
+    let command = this.config.command || process.execPath;
+    let args = Array.isArray(this.config.args) ? [...this.config.args] : [];
     const cwd = this.config.cwd || process.cwd();
     const env = { ...process.env, ...(this.config.env || {}) };
+
+    // On Windows, if executing a batch script, wrap with cmd.exe
+    if (process.platform === 'win32' && /\.(bat|cmd)$/i.test(command)) {
+      args = ['/d', '/s', '/c', `"${command}"`, ...args];
+      command = process.env.COMSPEC || 'cmd.exe';
+    }
 
     this.lastStartTime = new Date().toISOString();
 
@@ -67,6 +74,13 @@ export class WindowsServiceHost {
 
     const pid = this.child.pid;
     this.writeLog(`[unitup host] Service "${this.name}" started with PID ${pid} at ${this.lastStartTime}\n`);
+
+    // Reset restart count if process stays alive stably
+    const resetAfter = typeof this.config.restart?.resetAfter === 'number' ? this.config.restart.resetAfter : 60000;
+    if (this.resetTimer) clearTimeout(this.resetTimer);
+    this.resetTimer = setTimeout(() => {
+      this.restartCount = 0;
+    }, resetAfter);
 
     // Update metadata with current PID
     saveAppMetadata({
@@ -88,6 +102,7 @@ export class WindowsServiceHost {
     });
 
     this.child.on('exit', (code, signal) => {
+      if (this.resetTimer) clearTimeout(this.resetTimer);
       const exitMsg = `[unitup host] Process exited with code ${code}, signal ${signal}\n`;
       this.writeLog(exitMsg);
 
@@ -103,7 +118,7 @@ export class WindowsServiceHost {
       const shouldRestart = restart.enabled !== false && restart.policy !== 'no';
 
       if (shouldRestart) {
-        const maxRetries = restart.maxRetries || Number.POSITIVE_INFINITY;
+        const maxRetries = typeof restart.maxRetries === 'number' ? restart.maxRetries : Number.POSITIVE_INFINITY;
         if (this.restartCount < maxRetries) {
           this.restartCount++;
           const delay = typeof restart.delay === 'number' ? restart.delay : 3000;
@@ -138,6 +153,7 @@ export class WindowsServiceHost {
    */
   async stop(timeout) {
     this.stopping = true;
+    if (this.resetTimer) clearTimeout(this.resetTimer);
     const shutdownTimeout = timeout || this.config.shutdownTimeout || 10000;
 
     if (!this.child || !this.child.pid) {
@@ -145,7 +161,8 @@ export class WindowsServiceHost {
       return;
     }
 
-    this.writeLog(`[unitup host] Stopping service "${this.name}" (PID ${this.child.pid})...\n`);
+    const pid = this.child.pid;
+    this.writeLog(`[unitup host] Stopping service "${this.name}" (PID ${pid})...\n`);
 
     return new Promise((resolve) => {
       let forceKillTimer = null;
@@ -159,15 +176,21 @@ export class WindowsServiceHost {
       if (this.child) {
         this.child.once('exit', onExit);
         try {
-          // On Windows, try sending SIGINT/SIGTERM or tree-kill
           this.child.kill('SIGTERM');
         } catch {
           // ignore
         }
 
         forceKillTimer = setTimeout(() => {
+          this.writeLog('[unitup host] Graceful shutdown timed out. Force killing process...\n', true);
+          if (process.platform === 'win32') {
+            try {
+              execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => {});
+            } catch {
+              // ignore
+            }
+          }
           if (this.child) {
-            this.writeLog('[unitup host] Graceful shutdown timed out. Force killing process...\n', true);
             try {
               this.child.kill('SIGKILL');
             } catch {
@@ -199,7 +222,7 @@ export class WindowsServiceHost {
 
 // Standalone runner execution entry point when run directly:
 // node windows-host.js <serviceName>
-if (process.argv[1] && process.argv[1].endsWith('windows-host.js') && process.argv[2]) {
+if (process.argv[1]?.endsWith('windows-host.js') && process.argv[2]) {
   const serviceName = process.argv[2];
   const meta = readAppMetadata(serviceName);
   if (!meta) {

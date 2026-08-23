@@ -787,7 +787,21 @@ export async function runCli(argv = process.argv.slice(2)) {
             diskUsage: flags.diskUsage,
             system: flags.system
           });
-          if (typeof output === 'string') {
+          if (output && typeof output.on === 'function') {
+            await new Promise((resolve) => {
+              const cleanup = () => {
+                if (output.stop) output.stop();
+                resolve();
+              };
+              process.on('SIGINT', cleanup);
+              process.on('SIGTERM', cleanup);
+              output.on('close', resolve);
+              output.on('error', (err) => {
+                console.error(err.message);
+                cleanup();
+              });
+            });
+          } else if (typeof output === 'string') {
             console.log(output);
           }
         }

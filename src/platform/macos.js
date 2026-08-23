@@ -13,6 +13,7 @@ import {
   deleteAppMetadata,
   formatRelativeTime,
   getAppsDir,
+  getUnitupDir,
   readAppMetadata,
   sanitizeServiceName,
   saveAppMetadata
@@ -49,7 +50,13 @@ function dictToPlistXml(dict) {
     } else if (Array.isArray(value)) {
       lines.push('  <array>');
       for (const item of value) {
-        lines.push(`    <string>${escapeXml(item)}</string>`);
+        if (typeof item === 'boolean') {
+          lines.push(`    <${item ? 'true' : 'false'}/>`);
+        } else if (typeof item === 'number') {
+          lines.push(`    <integer>${item}</integer>`);
+        } else {
+          lines.push(`    <string>${escapeXml(item)}</string>`);
+        }
       }
       lines.push('  </array>');
     } else if (value && typeof value === 'object') {
@@ -159,8 +166,8 @@ export class MacOSAdapter extends ServiceAdapter {
     const programArguments = [config.command, ...(config.args || [])];
 
     // Ensure log directory exists
-    const stdoutLog = config.logs?.stdout || path.join(os.homedir(), '.unitup', 'logs', `${safeName}.log`);
-    const stderrLog = config.logs?.stderr || path.join(os.homedir(), '.unitup', 'logs', `${safeName}-error.log`);
+    const stdoutLog = config.logs?.stdout || path.join(getUnitupDir(), 'logs', `${safeName}.log`);
+    const stderrLog = config.logs?.stderr || path.join(getUnitupDir(), 'logs', `${safeName}-error.log`);
 
     const dict = {
       Label: label,
@@ -229,7 +236,7 @@ ${dictToPlistXml(dict)}
     }
 
     // Ensure logs dir exists
-    const logsDir = path.dirname(config.logs?.stdout || path.join(os.homedir(), '.unitup', 'logs', `${safeName}.log`));
+    const logsDir = path.dirname(config.logs?.stdout || path.join(getUnitupDir(), 'logs', `${safeName}.log`));
     if (!fs.existsSync(logsDir)) {
       fs.mkdirSync(logsDir, { recursive: true });
     }
@@ -599,10 +606,17 @@ ${dictToPlistXml(dict)}
   async logs(name, options = {}) {
     const safeName = sanitizeServiceName(name);
     const meta = readAppMetadata(safeName);
-    const stdoutPath = meta?.logs?.stdout || path.join(os.homedir(), '.unitup', 'logs', `${safeName}.log`);
-    const stderrPath = meta?.logs?.stderr || path.join(os.homedir(), '.unitup', 'logs', `${safeName}-error.log`);
+    const stdoutPath = meta?.logs?.stdout || path.join(getUnitupDir(), 'logs', `${safeName}.log`);
+    const stderrPath = meta?.logs?.stderr || path.join(getUnitupDir(), 'logs', `${safeName}-error.log`);
 
-    return readServiceLogs([stdoutPath, stderrPath], options);
+    let paths = [stdoutPath, stderrPath];
+    if (options.output === 'stdout' || options.stdout) {
+      paths = [stdoutPath];
+    } else if (options.output === 'stderr' || options.stderr) {
+      paths = [stderrPath];
+    }
+
+    return readServiceLogs(paths, options);
   }
 
   /**

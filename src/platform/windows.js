@@ -404,7 +404,14 @@ export class WindowsAdapter extends ServiceAdapter {
     const stdoutPath = meta?.logs?.stdout || defaultStdout;
     const stderrPath = meta?.logs?.stderr || defaultStderr;
 
-    return readServiceLogs([stdoutPath, stderrPath], options);
+    let paths = [stdoutPath, stderrPath];
+    if (options.output === 'stdout' || options.stdout) {
+      paths = [stdoutPath];
+    } else if (options.output === 'stderr' || options.stderr) {
+      paths = [stderrPath];
+    }
+
+    return readServiceLogs(paths, options);
   }
 
   /**

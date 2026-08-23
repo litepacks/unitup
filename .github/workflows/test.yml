@@ -58,7 +58,7 @@ jobs:
           if command -v systemctl >/dev/null 2>&1; then
             echo "systemctl available, attempting real systemd integration test..."
             export UNITUP_INTEGRATION_TEST=1
-            dbus-run-session node --test test/*.test.js || echo "Systemd user session DBus unavailable in runner environment, skipping real systemd daemon."
+            dbus-run-session node --test || echo "Systemd user session DBus unavailable in runner environment, skipping real systemd daemon."
           else
             echo "systemctl unavailable."
           fi
