@@ -473,7 +473,7 @@ describe('unitup Comprehensive Contract Test Suite', () => {
       });
 
       assert.equal(resolved.runtime, 'python');
-      assert.ok(resolved.command.endsWith('python3') || resolved.command.endsWith('python'));
+      assert.ok(resolved.command.toLowerCase().includes('python'));
       assert.deepEqual(resolved.args, ['-u', pyPath, '--debug']);
     });
   });

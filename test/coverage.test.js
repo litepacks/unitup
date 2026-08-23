@@ -160,7 +160,8 @@ describe('Coverage Extension Suite', () => {
 
     const origConfig = process.env.XDG_CONFIG_HOME;
     try {
-      process.env.XDG_CONFIG_HOME = '/root/non-writable-test-dir-12345';
+      process.env.XDG_CONFIG_HOME =
+        process.platform === 'win32' ? 'Z:\\non_existent_drive_test_12345' : '/root/non-writable-test-dir-12345';
       assert.equal(await isUserUnitDirWritable(), false);
     } finally {
       process.env.XDG_CONFIG_HOME = origConfig;

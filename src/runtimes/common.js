@@ -6,16 +6,34 @@ export function findExecutableInPath(binaryName) {
   // 1. Check standard PATH env
   const envPath = process.env.PATH || '';
   const dirs = envPath.split(path.delimiter).filter(Boolean);
+  const isWin = process.platform === 'win32';
+  const pathext = isWin ? (process.env.PATHEXT || '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean) : [''];
 
   for (const dir of dirs) {
-    const full = path.join(dir, binaryName);
+    const directFull = path.join(dir, binaryName);
     try {
-      if (fs.existsSync(full)) {
-        fs.accessSync(full, fs.constants.X_OK);
-        return full;
+      if (fs.existsSync(directFull)) {
+        if (!isWin) fs.accessSync(directFull, fs.constants.X_OK);
+        return directFull;
       }
     } catch {
       // ignore
+    }
+
+    if (isWin) {
+      for (const ext of pathext) {
+        const withExt = path.join(
+          dir,
+          binaryName.toLowerCase().endsWith(ext.toLowerCase()) ? binaryName : `${binaryName}${ext.toLowerCase()}`
+        );
+        try {
+          if (fs.existsSync(withExt)) {
+            return withExt;
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
   }
   return null;
