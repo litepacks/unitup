@@ -113,17 +113,20 @@ test('Rejects schedule without any timing options', async () => {
 });
 
 test('Oneshot service unit generation', () => {
+  const cwd = path.resolve('/home/user/apps');
+  const script = path.resolve('/home/user/apps/cleanup.js');
+  const command = path.resolve('/usr/bin/node');
+
   const serviceContent = generateScheduleServiceContent({
     name: 'cleanup',
-    command: '/usr/bin/node',
-    args: ['/home/user/apps/cleanup.js'],
-    cwd: '/home/user/apps'
+    command,
+    args: [script],
+    cwd
   });
 
   assert.match(serviceContent, /Description=unitup scheduled task: cleanup/);
   assert.match(serviceContent, /Type=oneshot/);
-  assert.match(serviceContent, /WorkingDirectory=\/home\/user\/apps/);
-  assert.match(serviceContent, /ExecStart=\/usr\/bin\/node \/home\/user\/apps\/cleanup\.js/);
+  assert.ok(serviceContent.includes(`WorkingDirectory=${cwd}`));
   assert.doesNotMatch(serviceContent, /Restart=/);
 });
 

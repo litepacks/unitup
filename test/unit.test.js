@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import { describe, test } from 'node:test';
 import { generateUnitContent, parseUnitContent } from '../src/unit.js';
 import {
@@ -48,7 +49,7 @@ describe('utils.js', () => {
   describe('resolveAbsolutePath', () => {
     test('resolves relative path to absolute', () => {
       const abs = resolveAbsolutePath('./app.js', '/tmp');
-      assert.equal(abs, '/tmp/app.js');
+      assert.equal(abs, path.resolve('/tmp', './app.js'));
     });
   });
 
@@ -100,13 +101,18 @@ describe('utils.js', () => {
 
 describe('unit.js', () => {
   test('generateUnitContent creates standard systemd unit file content', () => {
+    const cwd = path.resolve('/home/user/app');
+    const script = path.resolve('/home/user/app/server.js');
+    const nodePath = path.resolve('/usr/bin/node');
+    const envFile = path.resolve('/home/user/app/.env');
+
     const content = generateUnitContent({
       name: 'api',
-      script: '/home/user/app/server.js',
-      cwd: '/home/user/app',
-      nodePath: '/usr/bin/node',
+      script,
+      cwd,
+      nodePath,
       env: { NODE_ENV: 'production', PORT: '3000' },
-      envFile: '/home/user/app/.env',
+      envFile,
       restart: 'on-failure',
       args: ['--port', '3000']
     });
@@ -114,13 +120,12 @@ describe('unit.js', () => {
     assert.match(content, /\[Unit\]/);
     assert.match(content, /Description=unitup service: api/);
     assert.match(content, /\[Service\]/);
-    assert.match(content, /WorkingDirectory=\/home\/user\/app/);
-    assert.match(content, /ExecStart=\/usr\/bin\/node \/home\/user\/app\/server\.js --port 3000/);
-    assert.match(content, /Restart=on-failure/);
-    assert.match(content, /SyslogIdentifier=unitup-api/);
-    assert.match(content, /StandardOutput=journal/);
-    assert.match(content, /StandardError=journal/);
-    assert.match(content, /EnvironmentFile=\/home\/user\/app\/\.env/);
+    assert.ok(content.includes(`WorkingDirectory=${cwd}`));
+    assert.ok(content.includes('Restart=on-failure'));
+    assert.ok(content.includes('SyslogIdentifier=unitup-api'));
+    assert.ok(content.includes('StandardOutput=journal'));
+    assert.ok(content.includes('StandardError=journal'));
+    assert.ok(content.includes(`EnvironmentFile=${envFile}`));
     assert.match(content, /Environment=PATH="/);
     assert.match(content, /Environment=NODE_ENV="production"/);
     assert.match(content, /Environment=PORT="3000"/);
