@@ -73,6 +73,7 @@ import {
 } from './unit.js';
 import {
   findProjectConfig,
+  formatDuration,
   formatMemoryBytes,
   getAppMetadataPath,
   getAppsDir,
@@ -94,6 +95,29 @@ import {
   validateDuration,
   validateMemorySize
 } from './utils.js';
+import {
+  ProcessManager,
+  GenerationManager,
+  Router,
+  ReadinessChecker,
+  ReadinessTimeoutError,
+  ProcessStartupError,
+  PortMismatchError,
+  DrainManager,
+  DeploymentLock,
+  DeploymentLockError,
+  Supervisor,
+  IPCServer,
+  IPCClient,
+  findFreePort
+} from './core/index.js';
+import {
+  DeploymentManager,
+  DeploymentState,
+  defaultDeploymentManager,
+  RollbackManager,
+  defaultRollbackManager
+} from './deploy/index.js';
 
 // Aliases for unified cross-platform API
 const install = (opts) => defaultManager.install(opts);
@@ -101,6 +125,10 @@ const uninstall = (name, opts) => defaultManager.uninstall(name, opts);
 const start = (name, opts) => defaultManager.start(name, opts);
 const stop = (name, opts) => defaultManager.stop(name, opts);
 const restart = (name, opts) => defaultManager.restart(name, opts);
+const deploy = (name, opts) => defaultDeploymentManager.deploy(name, {}, opts);
+const promote = (name, opts) => defaultDeploymentManager.promote(name, {}, opts);
+const rollback = (name, opts) => defaultRollbackManager.rollback(name, {}, opts);
+const generations = (name, opts) => new GenerationManager(opts).listGenerations(name);
 const status = (name, opts) => defaultManager.status(name, opts);
 const list = (opts) => defaultManager.list(opts);
 const inspect = (name, opts) => defaultManager.inspect(name, opts);
@@ -116,6 +144,10 @@ export {
   start,
   stop,
   restart,
+  deploy,
+  promote,
+  rollback,
+  generations,
   status,
   list,
   inspect,
@@ -125,6 +157,27 @@ export {
   platform,
   ServiceManager,
   defaultManager,
+  // Zero-Downtime Deployment & Orchestration
+  DeploymentManager,
+  DeploymentState,
+  defaultDeploymentManager,
+  RollbackManager,
+  defaultRollbackManager,
+  // Core Runtime Primitives
+  ProcessManager,
+  GenerationManager,
+  Router,
+  ReadinessChecker,
+  ReadinessTimeoutError,
+  ProcessStartupError,
+  PortMismatchError,
+  DrainManager,
+  DeploymentLock,
+  DeploymentLockError,
+  Supervisor,
+  IPCServer,
+  IPCClient,
+  findFreePort,
   // Platform Adapters & Factory
   ServiceAdapter,
   LinuxAdapter,
@@ -179,6 +232,7 @@ export {
   validateMemorySize,
   validateDuration,
   formatMemoryBytes,
+  formatDuration,
   // Runtime detection & resolution
   detectRuntime,
   resolveRuntimeConfig,

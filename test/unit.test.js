@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import { generateUnitContent, parseUnitContent } from '../src/unit.js';
 import {
   escapeExecArg,
+  formatDuration,
   formatRelativeTime,
   formatSystemdEnv,
   formatTable,
@@ -77,6 +78,22 @@ describe('utils.js', () => {
       const now = new Date();
       const tenMinsAgo = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
       assert.match(formatRelativeTime(tenMinsAgo), /10 minutes ago/);
+    });
+  });
+
+  describe('formatDuration', () => {
+    test('formats milliseconds into human readable durations', () => {
+      assert.equal(formatDuration(0), '0s');
+      assert.equal(formatDuration(45000), '45s');
+      assert.equal(formatDuration(60000), '1 min');
+      assert.equal(formatDuration(120000), '2 mins');
+      assert.equal(formatDuration(3600000), '1 hour');
+      assert.equal(formatDuration(7200000), '2 hours');
+      assert.equal(formatDuration(86400000), '1 day');
+      assert.equal(formatDuration(172800000), '2 days');
+      assert.equal(formatDuration(-10), '-');
+      assert.equal(formatDuration(NaN), '-');
+      assert.equal(formatDuration('invalid'), '-');
     });
   });
 

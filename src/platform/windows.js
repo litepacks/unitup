@@ -14,6 +14,7 @@ import {
   deleteAppMetadata,
   formatRelativeTime,
   getAppsDir,
+  getUnitupBinPath,
   getUnitupDir,
   readAppMetadata,
   sanitizeServiceName,
@@ -75,7 +76,9 @@ export class WindowsAdapter extends ServiceAdapter {
     const safeName = sanitizeServiceName(config.name);
     const serviceName = this.getServiceName(safeName);
     const nodeExec = process.execPath;
-    const binPath = `"${nodeExec}" "${WINDOWS_HOST_PATH}" "${safeName}"`;
+    const hostScript = config.deploy?.zeroDowntime ? getUnitupBinPath() : WINDOWS_HOST_PATH;
+    const hostArg = config.deploy?.zeroDowntime ? `supervisor "${safeName}"` : `"${safeName}"`;
+    const binPath = `"${nodeExec}" "${hostScript}" ${hostArg}`;
     const startType = config.autostart !== false ? 'auto' : 'demand';
 
     return {

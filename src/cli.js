@@ -36,7 +36,10 @@ import {
 } from './systemd.js';
 import {
   findProjectConfig,
+  formatDuration,
+  formatRelativeTime,
   formatTable,
+  parseDurationMs,
   readGlobalConfig,
   readProjectConfig,
   sanitizeServiceName,
@@ -44,6 +47,13 @@ import {
   saveProjectConfig,
   validateMemorySize
 } from './utils.js';
+import { GenerationManager } from './core/generation-manager.js';
+import { IPCClient } from './core/ipc.js';
+import { Supervisor } from './core/supervisor.js';
+import {
+  defaultDeploymentManager as deploymentManager,
+  defaultRollbackManager as rollbackManager
+} from './deploy/index.js';
 
 /**
  * Custom light CLI argument parser without runtime dependencies.
@@ -102,7 +112,13 @@ export function parseArgs(argv) {
       onBoot: '',
       onActive: '',
       randomDelay: '',
-      persistent: false
+      persistent: false,
+      port: '',
+      zeroDowntime: false,
+      ready: '',
+      drain: '',
+      canary: false,
+      weight: ''
     }
   };
 
@@ -354,6 +370,36 @@ export function parseArgs(argv) {
     } else if (arg === '--persistent') {
       result.flags.persistent = true;
       i++;
+    } else if (arg === '--port') {
+      result.flags.port = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--port=')) {
+      result.flags.port = arg.slice(7);
+      i++;
+    } else if (arg === '--zero-downtime') {
+      result.flags.zeroDowntime = true;
+      i++;
+    } else if (arg === '--ready') {
+      result.flags.ready = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--ready=')) {
+      result.flags.ready = arg.slice(8);
+      i++;
+    } else if (arg === '--drain') {
+      result.flags.drain = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--drain=')) {
+      result.flags.drain = arg.slice(8);
+      i++;
+    } else if (arg === '--canary') {
+      result.flags.canary = true;
+      i++;
+    } else if (arg === '--weight') {
+      result.flags.weight = argv[i + 1] || '';
+      i += 2;
+    } else if (arg.startsWith('--weight=')) {
+      result.flags.weight = arg.slice(9);
+      i++;
     } else if (!arg.startsWith('-')) {
       if (!result.command) {
         result.command = arg;
@@ -380,6 +426,10 @@ Usage:
   unitup start <name|@group>    Start a service (--enable to enable on boot)
   unitup stop <name|@group>     Stop a service
   unitup restart <name|@group>  Restart a service
+  unitup deploy <name>          Perform zero-downtime deployment (--canary, --weight 10%)
+  unitup rollback <name>        Roll back a service to its previous generation or abort canary
+  unitup promote <name>         Promote a canary generation to 100% active
+  unitup generations <name>     List all runtime generations and ports for a service
   unitup status <name|@group>   Show status summary (--raw, --verbose)
   unitup enable <name>          Enable service on startup/boot
   unitup disable <name>         Disable service on startup/boot
@@ -613,7 +663,14 @@ export async function runCli(argv = process.argv.slice(2)) {
           memoryMax: memoryMaxFlag,
           memorySwapMax: memorySwapMaxFlag,
           defaultMemory: flags.defaultMemory,
-          force: flags.force
+          force: flags.force,
+          port: flags.port ? Number(flags.port) : projectCfg?.port,
+          deploy: {
+            ...(projectCfg?.deploy || {}),
+            ...(flags.zeroDowntime ? { zeroDowntime: true } : {}),
+            ...(flags.ready ? { ready: flags.ready } : {}),
+            ...(flags.drain ? { drain: flags.drain } : {})
+          }
         };
 
         if (flags.dryRun) {
@@ -696,6 +753,249 @@ export async function runCli(argv = process.argv.slice(2)) {
         break;
       }
 
+      case 'deploy': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Service name is required.\nExample: unitup deploy api');
+        }
+        const safeName = sanitizeServiceName(nameArg);
+        console.log(`${safeName}\n`);
+
+        const isCanary = flags.canary;
+        const weight = flags.weight ? Number(flags.weight.replace('%', '')) : undefined;
+
+        const onProgress = (evt) => {
+          if (evt.state === 'STARTING') {
+            console.log(`✓ generation #${evt.generation} started`);
+          } else if (evt.state === 'WAITING_READY') {
+            // waiting for readiness
+          } else if (evt.state === 'SETTING_CANARY') {
+            const pct = Math.round(evt.weight > 1 ? evt.weight : evt.weight * 100);
+            console.log('✓ ready');
+            console.log(`✓ canary traffic set: ${pct}% to generation #${evt.generation}`);
+          } else if (evt.state === 'SWITCHING') {
+            console.log('✓ ready');
+            console.log('✓ traffic switched');
+          } else if (evt.state === 'STOPPING_PREVIOUS') {
+            console.log('✓ previous generation drained\n');
+          }
+        };
+
+        const res = await deploymentManager.deploy(
+          safeName,
+          {},
+          {
+            publicPort: flags.port ? Number(flags.port) : undefined,
+            readyPath: flags.ready || undefined,
+            drainTimeout: flags.drain ? parseDurationMs(flags.drain) : undefined,
+            canary: isCanary,
+            weight,
+            onProgress
+          }
+        );
+
+        if (res.isCanary) {
+          const pct = Math.round(res.canaryWeight > 1 ? res.canaryWeight : res.canaryWeight * 100);
+          console.log(
+            `\ncanary: v${res.canaryGeneration} (${pct}%) active alongside v${res.activeGeneration} (${100 - pct}%)`
+          );
+          console.log(`Run "unitup promote ${safeName}" to shift 100% traffic to v${res.canaryGeneration}.`);
+        } else {
+          const prev = res.previousGeneration ? `v${res.previousGeneration}` : 'none';
+          const curr = `v${res.currentGeneration}`;
+          console.log(`${prev} -> ${curr}`);
+          console.log(`downtime: ${res.downtimeMs ?? 0}ms`);
+        }
+        break;
+      }
+
+      case 'promote': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Service name is required.\nExample: unitup promote api');
+        }
+        const safeName = sanitizeServiceName(nameArg);
+        console.log(`Promoting canary for "${safeName}"...\n`);
+
+        const onProgress = (evt) => {
+          if (evt.state === 'PROMOTING') {
+            console.log(`✓ Promoting generation #${evt.generation} to 100%`);
+          } else if (evt.state === 'DRAINING') {
+            console.log(`✓ Draining previous generation #${evt.generation}`);
+          }
+        };
+
+        const res = await deploymentManager.promote(
+          safeName,
+          {},
+          {
+            drainTimeout: flags.drain ? parseDurationMs(flags.drain) : undefined,
+            onProgress
+          }
+        );
+
+        console.log(`\n✓ Promoted generation #${res.promotedGeneration} to 100% active.`);
+        if (res.previousGeneration) {
+          console.log(`v${res.previousGeneration} -> v${res.promotedGeneration}`);
+        }
+        break;
+      }
+
+      case 'rollback': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Service name is required.\nExample: unitup rollback api');
+        }
+        const safeName = sanitizeServiceName(nameArg);
+        console.log(`Rolling back "${safeName}"...\n`);
+
+        const onProgress = (evt) => {
+          if (evt.state === 'ABORTING_CANARY') {
+            console.log(`✓ Aborting and draining canary generation #${evt.canaryGeneration}`);
+          } else if (evt.state === 'SWITCHING') {
+            console.log(`✓ Traffic switched back to generation #${evt.targetGeneration}`);
+          } else if (evt.state === 'DRAINING_CURRENT') {
+            console.log(`✓ Draining generation #${evt.generation}`);
+          }
+        };
+
+        const res = await rollbackManager.rollback(
+          safeName,
+          {},
+          {
+            readyPath: flags.ready || undefined,
+            drainTimeout: flags.drain ? parseDurationMs(flags.drain) : undefined,
+            onProgress
+          }
+        );
+
+        if (res.abortedCanary) {
+          console.log(
+            `\n✓ Aborted canary generation #${res.abortedCanary}. 100% traffic retained on generation #${res.activeGeneration}.`
+          );
+        } else {
+          console.log(`\n✓ Rolled back service "${safeName}" to generation #${res.activeGeneration}.`);
+        }
+        break;
+      }
+
+      case 'supervisor': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Service name is required for supervisor mode.\nExample: unitup supervisor api');
+        }
+        await Supervisor.run(nameArg);
+        break;
+      }
+
+      case 'history':
+      case 'generations': {
+        const nameArg = positionals[0];
+        if (!nameArg) {
+          throw new Error('Service name is required.\nExample: unitup generations api');
+        }
+        const safeName = sanitizeServiceName(nameArg);
+        const gm = new GenerationManager();
+        let list = gm.listGenerations(safeName);
+
+        // Check if supervisor is running via IPC to enrich with live in-flight data
+        let liveStatus = null;
+        const ipcClient = new IPCClient(safeName);
+        if (await ipcClient.isAlive()) {
+          try {
+            liveStatus = await ipcClient.send({ action: 'status' }, null, 1000);
+            if (liveStatus?.generations) {
+              list = liveStatus.generations;
+            }
+          } catch {
+            // fallback to local state
+          }
+        }
+
+        if (!list || list.length === 0) {
+          if (flags.json) {
+            console.log(JSON.stringify([], null, 2));
+          } else {
+            console.log(`No generations recorded for service "${safeName}".`);
+          }
+          break;
+        }
+
+        const tableData = list.map((g) => {
+          let activeFor = '-';
+          if (g.status === 'active') {
+            const start = g.activatedAt
+              ? new Date(g.activatedAt).getTime()
+              : g.createdAt
+                ? new Date(g.createdAt).getTime()
+                : null;
+            if (start && !Number.isNaN(start)) {
+              activeFor = formatDuration(Date.now() - start);
+            }
+          } else if (g.activatedAt) {
+            const start = new Date(g.activatedAt).getTime();
+            const end = g.deactivatedAt
+              ? new Date(g.deactivatedAt).getTime()
+              : g.stoppedAt
+                ? new Date(g.stoppedAt).getTime()
+                : g.drainingAt
+                  ? new Date(g.drainingAt).getTime()
+                  : null;
+            if (start && end && !Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+              activeFor = formatDuration(end - start);
+            }
+          }
+
+          return {
+            gen: `#${g.id}`,
+            status: g.status || 'unknown',
+            pid: g.pid ? String(g.pid) : '-',
+            port: g.internalPort ? String(g.internalPort) : '-',
+            created: formatRelativeTime(g.createdAt),
+            activeFor,
+            raw: g
+          };
+        });
+
+        if (flags.json) {
+          console.log(
+            JSON.stringify(
+              tableData.map((d) => ({
+                id: d.raw.id,
+                status: d.raw.status,
+                pid: d.raw.pid,
+                internalPort: d.raw.internalPort,
+                createdAt: d.raw.createdAt,
+                activatedAt: d.raw.activatedAt || null,
+                stoppedAt: d.raw.stoppedAt || null,
+                deactivatedAt: d.raw.deactivatedAt || null,
+                activeFor: d.activeFor
+              })),
+              null,
+              2
+            )
+          );
+          break;
+        }
+
+        console.log(`=== Generations: ${safeName} ===\n`);
+        if (liveStatus?.routerPort) {
+          console.log(`Public Router: :${liveStatus.routerPort}`);
+          console.log(`In-Flight Requests: ${liveStatus.inFlightRequests || 0}\n`);
+        }
+
+        const table = formatTable(tableData, [
+          { key: 'gen', label: 'GEN' },
+          { key: 'status', label: 'STATUS' },
+          { key: 'pid', label: 'PID' },
+          { key: 'port', label: 'PORT' },
+          { key: 'created', label: 'CREATED' },
+          { key: 'activeFor', label: 'ACTIVE FOR' }
+        ]);
+        console.log(table);
+        break;
+      }
+
       case 'enable': {
         const nameArg = positionals[0];
         if (!nameArg) {
@@ -738,6 +1038,56 @@ export async function runCli(argv = process.argv.slice(2)) {
             console.log(raw);
           } else {
             const status = await defaultManager.status(name, { system: flags.system });
+
+            // Enrich with generation info if available
+            const gm = new GenerationManager();
+            const genState = gm.loadState(name);
+            let genDetails = null;
+            if (genState?.activeGeneration || genState?.canaryGeneration) {
+              const activeGen = gm.getActive(name);
+              const canaryGen = gm.getCanary(name);
+              genDetails = {
+                activeGeneration: genState.activeGeneration,
+                internalPort: activeGen?.internalPort || null,
+                canaryGeneration: canaryGen?.id || null,
+                canaryPort: canaryGen?.internalPort || null,
+                canaryWeight: canaryGen?.canaryWeight || null,
+                routerPort: null,
+                inFlightRequests: 0
+              };
+
+              const ipcClient = new IPCClient(name);
+              if (await ipcClient.isAlive()) {
+                try {
+                  const live = await ipcClient.send({ action: 'status' }, null, 500);
+                  if (live?.routerPort) {
+                    genDetails.routerPort = live.routerPort;
+                  }
+                  if (live?.inFlightRequests !== undefined) {
+                    genDetails.inFlightRequests = live.inFlightRequests;
+                  }
+                  if (live?.canaryGeneration) {
+                    genDetails.canaryGeneration = live.canaryGeneration.id;
+                    genDetails.canaryPort = live.canaryGeneration.internalPort;
+                  }
+                  if (live?.canaryWeight !== undefined) {
+                    genDetails.canaryWeight = live.canaryWeight;
+                  }
+                } catch {
+                  // ignore
+                }
+              }
+            }
+
+            if (flags.json) {
+              const jsonObj = {
+                ...status,
+                ...(genDetails ? { deployment: genDetails } : {})
+              };
+              console.log(JSON.stringify(jsonObj, null, 2));
+              continue;
+            }
+
             console.log(`${status.name}\n`);
             console.log(`Status: ${status.status || status.state}`);
             console.log(`PID: ${status.pid}`);
@@ -746,6 +1096,28 @@ export async function runCli(argv = process.argv.slice(2)) {
             console.log(`Command: ${status.command}`);
             console.log(`Arguments: ${status.arguments}`);
             console.log(`Working directory: ${status.cwd}`);
+
+            if (genDetails) {
+              if (genDetails.activeGeneration) {
+                console.log(`Active Generation: #${genDetails.activeGeneration}`);
+              }
+              if (genDetails.canaryGeneration) {
+                const pct = Math.round(
+                  genDetails.canaryWeight > 1 ? genDetails.canaryWeight : genDetails.canaryWeight * 100
+                );
+                console.log(
+                  `Canary: #${genDetails.canaryGeneration} (${pct}% traffic) -> :${genDetails.canaryPort || 'none'}`
+                );
+              }
+              if (genDetails.routerPort) {
+                const targetPort = genDetails.internalPort ? `:${genDetails.internalPort}` : 'none';
+                console.log(`Router: :${genDetails.routerPort} -> ${targetPort}`);
+                console.log(`In-Flight Requests: ${genDetails.inFlightRequests}`);
+              } else if (genDetails.internalPort) {
+                console.log(`Internal Port: ${genDetails.internalPort}`);
+              }
+            }
+
             if (status.memory) console.log(`Memory: ${status.memory}`);
             if (status.memoryPeak) console.log(`Memory Peak: ${status.memoryPeak}`);
             if (status.memoryHigh) console.log(`Memory High: ${status.memoryHigh}`);

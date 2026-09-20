@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ExecutableNotFoundError, InvalidServiceConfigError } from '../errors.js';
 import { detectRuntime, resolveRuntimeConfig } from '../runtimes/index.js';
-import { getUnitupDir, resolveEffectiveMemoryLimits, resolveWorkingDirectory, sanitizeServiceName } from '../utils.js';
+import {
+  getUnitupDir,
+  parseDurationMs,
+  resolveEffectiveMemoryLimits,
+  resolveWorkingDirectory,
+  sanitizeServiceName
+} from '../utils.js';
 
 /**
  * Resolves a binary or command name to an absolute executable path.
@@ -187,6 +193,27 @@ export async function normalizeServiceConfig(rawOpts = {}) {
   // Memory and resource limits
   const resources = resolveEffectiveMemoryLimits(rawOpts);
 
+  // Port and Deploy normalization
+  const port =
+    rawOpts.port !== undefined && rawOpts.port !== null && rawOpts.port !== '' ? Number(rawOpts.port) : undefined;
+
+  const rawDeploy = rawOpts.deploy && typeof rawOpts.deploy === 'object' ? rawOpts.deploy : {};
+  const zeroDowntime = !!(rawOpts.deploy === true || rawDeploy.zeroDowntime || rawOpts.zeroDowntime);
+  const readyPath =
+    typeof rawDeploy.ready === 'string'
+      ? rawDeploy.ready
+      : typeof rawOpts.ready === 'string'
+        ? rawOpts.ready
+        : undefined;
+  const drainRaw = rawDeploy.drain !== undefined ? rawDeploy.drain : rawOpts.drain;
+  const drainTimeout = drainRaw !== undefined ? parseDurationMs(drainRaw) : 10000;
+  const deploy = {
+    zeroDowntime,
+    ready: readyPath,
+    drain: drainRaw,
+    drainTimeout
+  };
+
   return {
     name,
     displayName,
@@ -196,6 +223,8 @@ export async function normalizeServiceConfig(rawOpts = {}) {
     args,
     script: rawOpts.script ? path.resolve(cwd, rawOpts.script) : undefined,
     cwd,
+    port,
+    deploy,
     env,
     envFile: rawOpts.envFile ? path.resolve(cwd, rawOpts.envFile) : undefined,
     autostart,

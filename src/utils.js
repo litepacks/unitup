@@ -1,6 +1,16 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * Returns the absolute path to the unitup CLI binary.
+ * @returns {string}
+ */
+export function getUnitupBinPath() {
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(currentDir, '../bin/unitup.js');
+}
 
 /**
  * Returns the base unitup config directory (~/.config/unitup).
@@ -170,6 +180,8 @@ export function saveAppMetadata(meta) {
     args,
     cwd,
     group: meta.group || 'default',
+    ...(meta.port !== undefined ? { port: meta.port } : {}),
+    ...(meta.deploy ? { deploy: meta.deploy } : {}),
     // Optional resources section
     ...(Object.keys(resources).length > 0 ? { resources } : {}),
     // Backward compatibility fields
@@ -416,6 +428,32 @@ export function formatRelativeTime(timestamp) {
 }
 
 /**
+ * Formats duration in milliseconds into a concise human-readable string (e.g. "23s", "2 mins", "3 hours", "2 days").
+ *
+ * @param {number} ms
+ * @returns {string}
+ */
+export function formatDuration(ms) {
+  if (typeof ms !== 'number' || isNaN(ms) || ms < 0) {
+    return '-';
+  }
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} min${minutes === 1 ? '' : 's'}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
+}
+
+/**
  * Formats data rows into a text table.
  *
  * @param {Array<Object>} data
@@ -601,6 +639,48 @@ export function validateDuration(val, paramName = 'Duration') {
   }
 
   return str;
+}
+
+/**
+ * Parses a duration string (e.g. '30s', '500ms', '1m') into milliseconds.
+ * @param {string|number} val
+ * @param {number} [defaultMs=10000]
+ * @returns {number}
+ */
+export function parseDurationMs(val, defaultMs = 10000) {
+  if (typeof val === 'number') return val;
+  if (!val || typeof val !== 'string') return defaultMs;
+  const str = val.trim().toLowerCase();
+  const match = str.match(/^(\d+(?:\.\d+)?)\s*(ms|msec|s|sec|seconds?|m|min|minutes?|h|hr|hours?|d|day|days?)?$/);
+  if (!match) return defaultMs;
+  const num = Number.parseFloat(match[1]);
+  const unit = match[2] || 's';
+  switch (unit) {
+    case 'ms':
+    case 'msec':
+      return num;
+    case 's':
+    case 'sec':
+    case 'second':
+    case 'seconds':
+      return num * 1000;
+    case 'm':
+    case 'min':
+    case 'minute':
+    case 'minutes':
+      return num * 60 * 1000;
+    case 'h':
+    case 'hr':
+    case 'hour':
+    case 'hours':
+      return num * 60 * 60 * 1000;
+    case 'd':
+    case 'day':
+    case 'days':
+      return num * 24 * 60 * 60 * 1000;
+    default:
+      return num * 1000;
+  }
 }
 
 /**

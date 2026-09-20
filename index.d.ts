@@ -337,6 +337,20 @@ export class InvalidServiceConfigError extends UnitupError {
 export class ExecutableNotFoundError extends UnitupError {
   executable: string;
 }
+export class ReadinessTimeoutError extends Error {
+  generation: GenerationRecord;
+}
+export class ProcessStartupError extends Error {
+  generation: GenerationRecord;
+}
+export class PortMismatchError extends Error {
+  generation: GenerationRecord;
+  detectedPort: number;
+}
+export class DeploymentLockError extends Error {
+  service: string;
+  lockedPid?: number;
+}
 
 // Adapters
 export abstract class ServiceAdapter {
@@ -443,6 +457,7 @@ export function formatTable(
   columns: Array<{ key: string; label: string }>
 ): string;
 export function formatMemoryBytes(bytes: number | string): string;
+export function formatDuration(ms: number): string;
 export function validateMemorySize(val: string | number, paramName?: string): string;
 export function validateDuration(val: string | number, paramName?: string): string;
 
@@ -514,5 +529,126 @@ export function validateCalendar(expression: string): Promise<{ valid: boolean; 
 export function readScheduleMetadata(name: string): Record<string, unknown> | null;
 export function getScheduleMetadataPath(name: string): string;
 export function getSchedulesDir(): string;
+
+// Zero-Downtime Deployment Primitives & Orchestration
+export interface GenerationRecord {
+  id: number;
+  service: string;
+  pid: number;
+  internalPort: number;
+  status: 'starting' | 'active' | 'previous' | 'draining' | 'stopped' | 'canary' | string;
+  createdAt: string;
+  activatedAt?: string;
+  drainingAt?: string;
+  stoppedAt?: string;
+  canaryWeight?: number;
+}
+
+export interface DeploymentResult {
+  service: string;
+  previousGeneration: number | null;
+  currentGeneration: number;
+  downtimeMs: number;
+  status: string;
+  canaryWeight?: number;
+}
+
+export interface PromoteResult {
+  service: string;
+  promotedGeneration: number;
+  previousGeneration: number | null;
+  downtimeMs: number;
+  status: string;
+}
+
+export interface RollbackResult {
+  service: string;
+  rolledBackFrom: number | null;
+  activeGeneration: number;
+  status: string;
+}
+
+export function deploy(name: string, options?: Record<string, unknown>): Promise<DeploymentResult>;
+export function promote(name: string, options?: Record<string, unknown>): Promise<PromoteResult>;
+export function rollback(name: string, options?: Record<string, unknown>): Promise<RollbackResult>;
+export function generations(name: string, options?: Record<string, unknown>): GenerationRecord[];
+
+export class ProcessManager {
+  constructor(options?: Record<string, unknown>);
+  start(command: string, args?: string[], options?: Record<string, unknown>): { pid: number; child: any; exitPromise: Promise<any> };
+  stop(processOrPid: number | object, options?: { timeout?: number; signal?: string }): Promise<boolean>;
+  signal(processOrPid: number | object, signal?: string): boolean;
+  isAlive(processOrPid: number | object): boolean;
+  waitForExit(processOrPid: number | object, timeout?: number): Promise<{ exited: boolean; code?: number | null; signal?: string | null }>;
+}
+
+export class GenerationManager {
+  constructor(options?: Record<string, unknown>);
+  create(serviceName: string, config?: Record<string, unknown>, options?: Record<string, unknown>): Promise<GenerationRecord>;
+  getActive(serviceName: string): GenerationRecord | null;
+  getPrevious(serviceName: string): GenerationRecord | null;
+  getCanary(serviceName: string): GenerationRecord | null;
+  getGeneration(serviceName: string, id: number | string): GenerationRecord | null;
+  markActive(generation: GenerationRecord): void;
+  markCanary(generation: GenerationRecord, weight?: number | string): void;
+  markDraining(generation: GenerationRecord): void;
+  remove(generation: GenerationRecord, purge?: boolean): void;
+  cleanupStale(serviceName: string): number;
+  listGenerations(serviceName: string): GenerationRecord[];
+}
+
+export class Router {
+  constructor(options?: Record<string, unknown>);
+  listen(publicPort: number, host?: string): Promise<{ port: number; host: string }>;
+  switchBackend(serviceName: string, generation: { id: number; internalPort: number }): void;
+  getActiveBackend(serviceName: string): GenerationRecord | null;
+  setCanary(serviceName: string, generation: { id: number; internalPort: number }, weight?: number | string): void;
+  clearCanary(serviceName: string): void;
+  promoteCanary(serviceName: string): void;
+  getCanary(serviceName: string): { generation: { id: number; internalPort: number }; weight: number } | null;
+  resolveBackend(serviceName: string, req?: any): { id: number; internalPort: number } | null;
+  getInFlightCount(generationId: number | string): number;
+  close(): Promise<void>;
+}
+
+export class ReadinessChecker {
+  constructor(options?: Record<string, unknown>);
+  checkTcp(port: number, host?: string, timeout?: number): Promise<boolean>;
+  checkHttp(port: number, path?: string, timeout?: number): Promise<boolean>;
+  ensure(generation: GenerationRecord, options?: { path?: string }): Promise<boolean>;
+  wait(generation: GenerationRecord, options?: { timeout?: number; interval?: number; path?: string }): Promise<boolean>;
+}
+
+export class DrainManager {
+  constructor(options?: Record<string, unknown>);
+  drain(generation: GenerationRecord, options?: { timeout?: number; pollInterval?: number; stopProcess?: boolean }): Promise<{ drained: boolean; inFlightRemaining: number; timedOut: boolean }>;
+}
+
+export class DeploymentLock {
+  constructor(options?: Record<string, unknown>);
+  acquire(serviceName: string): Promise<boolean>;
+  release(serviceName: string): Promise<boolean>;
+}
+
+export class DeploymentManager {
+  constructor(options?: Record<string, unknown>);
+  deploy(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>): Promise<DeploymentResult>;
+  promote(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>): Promise<PromoteResult>;
+}
+
+export class RollbackManager {
+  constructor(options?: Record<string, unknown>);
+  rollback(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>): Promise<RollbackResult>;
+}
+
+export class Supervisor {
+  constructor(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>);
+  start(): Promise<Supervisor>;
+  stop(): Promise<void>;
+  static run(serviceName: string): Promise<void>;
+}
+
+export const defaultDeploymentManager: DeploymentManager;
+export const defaultRollbackManager: RollbackManager;
 
 export default defaultManager;

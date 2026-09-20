@@ -9,6 +9,7 @@ import {
   getServiceNameFromUnit,
   getTimerFilename,
   getUnitFilename,
+  getUnitupBinPath,
   resolveAbsolutePath,
   resolveEffectiveMemoryLimits,
   resolveWorkingDirectory,
@@ -73,7 +74,10 @@ export function generateUnitContent(opts) {
   let commandExec = '';
   let execArgs = [];
 
-  if (opts.command) {
+  if (opts.deploy?.zeroDowntime) {
+    commandExec = process.execPath;
+    execArgs = [getUnitupBinPath(), 'supervisor', safeName];
+  } else if (opts.command) {
     commandExec = resolveAbsolutePath(opts.command);
     execArgs = Array.isArray(opts.args) ? [...opts.args] : [];
   } else if (opts.script) {

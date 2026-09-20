@@ -13,6 +13,7 @@ import {
   deleteAppMetadata,
   formatRelativeTime,
   getAppsDir,
+  getUnitupBinPath,
   getUnitupDir,
   readAppMetadata,
   sanitizeServiceName,
@@ -175,7 +176,9 @@ export class MacOSAdapter extends ServiceAdapter {
     const safeName = sanitizeServiceName(config.name);
     const label = this.getLabel(safeName);
 
-    const programArguments = [config.command, ...(config.args || [])];
+    const programArguments = config.deploy?.zeroDowntime
+      ? [process.execPath, getUnitupBinPath(), 'supervisor', safeName]
+      : [config.command, ...(config.args || [])];
 
     // Ensure log directory exists
     const stdoutLog = config.logs?.stdout || path.join(getUnitupDir(), 'logs', `${safeName}.log`);

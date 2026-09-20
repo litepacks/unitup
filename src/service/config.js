@@ -48,6 +48,14 @@ export function mergeConfigWithOptions(opts = {}) {
     memoryHigh: opts.memoryHigh || projectCfg?.resources?.memoryHigh || projectCfg?.memoryHigh || '',
     memoryMax: opts.memoryMax || projectCfg?.resources?.memoryMax || projectCfg?.memoryMax || '',
     memorySwapMax: opts.memorySwapMax || projectCfg?.resources?.memorySwapMax || projectCfg?.memorySwapMax || '',
+    port: opts.port !== undefined ? opts.port : projectCfg.port,
+    deploy: {
+      ...(projectCfg.deploy && typeof projectCfg.deploy === 'object' ? projectCfg.deploy : {}),
+      ...(opts.deploy && typeof opts.deploy === 'object' ? opts.deploy : {}),
+      ...(opts.zeroDowntime !== undefined ? { zeroDowntime: !!opts.zeroDowntime } : {}),
+      ...(opts.ready !== undefined ? { ready: opts.ready } : {}),
+      ...(opts.drain !== undefined ? { drain: opts.drain } : {})
+    },
     ...opts,
     env: { ...(projectCfg.env || {}), ...(opts.env || {}) },
     cwd: targetCwd
