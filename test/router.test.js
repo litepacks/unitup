@@ -31,7 +31,7 @@ describe('Router Architecture Boundary Suite', () => {
     const requestPublic = () =>
       new Promise((resolve, reject) => {
         http
-          .get(`http://127.0.0.1:${publicPort}/test`, (res) => {
+          .get(`http://127.0.0.1:${publicPort}/test`, { agent: false }, (res) => {
             let data = '';
             res.on('data', (c) => (data += c));
             res.on('end', () => resolve({ status: res.statusCode, body: data }));
@@ -57,6 +57,8 @@ describe('Router Architecture Boundary Suite', () => {
 
     // Clean up
     await router.close();
+    if (server1.closeAllConnections) server1.closeAllConnections();
+    if (server2.closeAllConnections) server2.closeAllConnections();
     await new Promise((r) => server1.close(r));
     await new Promise((r) => server2.close(r));
   });
@@ -100,6 +102,7 @@ describe('Router Architecture Boundary Suite', () => {
     assert.strictEqual(router.getInFlightCount(10), 0);
 
     await router.close();
+    if (backendServer.closeAllConnections) backendServer.closeAllConnections();
     await new Promise((r) => backendServer.close(r));
   });
 
@@ -109,11 +112,123 @@ describe('Router Architecture Boundary Suite', () => {
     await new Promise((r) => blocker.listen(busyPort, '127.0.0.1', r));
 
     const router = new Router();
-    await assert.rejects(
-      () => router.listen(busyPort, '127.0.0.1'),
-      /already occupied/
-    );
+    await assert.rejects(() => router.listen(busyPort, '127.0.0.1'), /already occupied/);
 
     await new Promise((r) => blocker.close(r));
+  });
+  test('strictly isolates multi-port routing and never mixes backends across ports', async () => {
+    const portA = await findFreePort();
+    const portB = await findFreePort();
+    const backendPortA = await findFreePort();
+    const backendPortB = await findFreePort();
+
+    // Backend A
+    const serverA = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('response-from-app-A');
+    });
+    await new Promise((r) => serverA.listen(backendPortA, '127.0.0.1', r));
+
+    // Backend B
+    const serverB = http.createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('response-from-app-B');
+    });
+    await new Promise((r) => serverB.listen(backendPortB, '127.0.0.1', r));
+
+    const router = new Router();
+
+    // Start Port A for appA
+    await router.listen(portA, '127.0.0.1', 'appA');
+    router.switchBackend('appA', { id: 1, internalPort: backendPortA }, portA);
+
+    // Start Port B for appB - CRITICAL: must NOT close Port A!
+    await router.listen(portB, '127.0.0.1', 'appB');
+    router.switchBackend('appB', { id: 2, internalPort: backendPortB }, portB);
+
+    const fetchText = (url, headers = {}) =>
+      new Promise((resolve, reject) => {
+        http
+          .get(url, { headers }, (res) => {
+            let data = '';
+            res.on('data', (c) => (data += c));
+            res.on('end', () => resolve({ status: res.statusCode, body: data }));
+          })
+          .on('error', reject);
+      });
+
+    // 1. Port A must respond with appA
+    const resA = await fetchText(`http://127.0.0.1:${portA}/`);
+    assert.strictEqual(resA.status, 200);
+    assert.strictEqual(resA.body, 'response-from-app-A');
+
+    // 2. Port B must respond with appB
+    const resB = await fetchText(`http://127.0.0.1:${portB}/`);
+    assert.strictEqual(resB.status, 200);
+    assert.strictEqual(resB.body, 'response-from-app-B');
+
+    // 3. Port A with Host: "appB.com" MUST NOT return appB!
+    // Since port A only hosts appA, it should resolve to appA or return 503, NEVER appB!
+    const resAWithHostB = await fetchText(`http://127.0.0.1:${portA}/`, { Host: 'appb.com' });
+    assert.notStrictEqual(resAWithHostB.body, 'response-from-app-B');
+
+    // 4. Closing Port A must NOT close Port B
+    await router.close(portA);
+    const resBAfterCloseA = await fetchText(`http://127.0.0.1:${portB}/`);
+    assert.strictEqual(resBAfterCloseA.status, 200);
+    assert.strictEqual(resBAfterCloseA.body, 'response-from-app-B');
+
+    // Clean up
+    await router.close();
+    if (serverA.closeAllConnections) serverA.closeAllConnections();
+    if (serverB.closeAllConnections) serverB.closeAllConnections();
+    await new Promise((r) => serverA.close(r));
+    await new Promise((r) => serverB.close(r));
+  });
+
+  test('does not blindly fall back across services when host does not match', async () => {
+    const publicPort = await findFreePort();
+    const backendPort1 = await findFreePort();
+    const backendPort2 = await findFreePort();
+
+    const server1 = http.createServer((req, res) => res.end('app1'));
+    const server2 = http.createServer((req, res) => res.end('app2'));
+    await new Promise((r) => server1.listen(backendPort1, '127.0.0.1', r));
+    await new Promise((r) => server2.listen(backendPort2, '127.0.0.1', r));
+
+    const router = new Router();
+    await router.listen(publicPort, '127.0.0.1');
+
+    // Two services on the same port
+    router.switchBackend('myservice1', { id: 1, internalPort: backendPort1 }, publicPort);
+    router.switchBackend('myservice2', { id: 2, internalPort: backendPort2 }, publicPort);
+
+    const fetchText = (url, headers = {}) =>
+      new Promise((resolve, reject) => {
+        http
+          .get(url, { headers }, (res) => {
+            let data = '';
+            res.on('data', (c) => (data += c));
+            res.on('end', () => resolve({ status: res.statusCode, body: data }));
+          })
+          .on('error', reject);
+      });
+
+    // Unmatched host must return 503, NEVER randomly choose myservice1
+    const resUnknown = await fetchText(`http://127.0.0.1:${publicPort}/`, {
+      Host: 'completelyunknown.com',
+    });
+    assert.strictEqual(resUnknown.status, 503);
+
+    // Matching host returns correct service
+    const resMatched = await fetchText(`http://127.0.0.1:${publicPort}/`, {
+      Host: 'myservice2.com',
+    });
+    assert.strictEqual(resMatched.status, 200);
+    assert.strictEqual(resMatched.body, 'app2');
+
+    await router.close();
+    await new Promise((r) => server1.close(r));
+    await new Promise((r) => server2.close(r));
   });
 });

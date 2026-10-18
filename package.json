@@ -12,7 +12,8 @@
     "test": "node --test",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "check": "biome check ."
+    "check": "biome check .",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
@@ -56,5 +57,13 @@
   "homepage": "https://github.com/litepacks/unitup#readme",
   "engines": {
     "node": ">=20.0.0"
-  }
+  },
+  "files": [
+    "bin",
+    "src",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
 }

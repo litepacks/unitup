@@ -2,8 +2,13 @@ import http from 'node:http';
 import net from 'node:net';
 
 /**
- * Router owns a stable public port and reverse-proxies HTTP & WebSocket traffic
+ * Router owns stable public ports and reverse-proxies HTTP & WebSocket traffic
  * to whichever internal generation is marked active.
+ *
+ * Supports multi-port listening with STRICT port-level isolation:
+ * - A request arriving on port A can ONLY EVER route to backends registered for port A.
+ * - Under NO circumstances will requests cross port boundaries.
+ * - Opening port B will NEVER close or disrupt port A.
  *
  * It contains NO deployment sequencing decisions.
  */
@@ -12,10 +17,29 @@ export class Router {
     this.activeBackends = new Map(); // serviceName -> generation { id, internalPort }
     this.canaryBackends = new Map(); // serviceName -> { generation, weight }
     this.inFlightRequests = new Map(); // generationId -> number
-    this.server = null;
-    this.listeningPort = null;
-    this.listeningHost = null;
+    this.servers = new Map(); // port -> { server, port, host }
+    this.portServices = new Map(); // port -> Set<serviceName>
+    this.servicePorts = new Map(); // serviceName -> port
+    this.server = null; // backward compatibility: primary/latest server
+    this.listeningPort = null; // backward compatibility
+    this.listeningHost = null; // backward compatibility
     this.closing = false;
+  }
+
+  /**
+   * Associates a service name with a public port.
+   *
+   * @param {string} serviceName
+   * @param {number|string} port
+   */
+  registerServicePort(serviceName, port) {
+    if (!serviceName || !port) return;
+    const numPort = Number(port);
+    this.servicePorts.set(serviceName, numPort);
+    if (!this.portServices.has(numPort)) {
+      this.portServices.set(numPort, new Set());
+    }
+    this.portServices.get(numPort).add(serviceName);
   }
 
   /**
@@ -24,15 +48,25 @@ export class Router {
    * @param {string} serviceName
    * @param {object} generation
    * @param {number} [weight=0.1] - Probability (0 to 1) or percentage (1 to 100)
+   * @param {number} [publicPort]
    */
-  setCanary(serviceName, generation, weight = 0.1) {
-    const parsed = typeof weight === 'string' ? Number.parseFloat(weight.replace('%', '')) : Number(weight);
+  setCanary(serviceName, generation, weight = 0.1, publicPort = null) {
+    const parsed =
+      typeof weight === 'string' ? Number.parseFloat(weight.replace('%', '')) : Number(weight);
     const num = Number.isNaN(parsed) ? 0.1 : parsed;
     const normalizedWeight = num > 1 ? num / 100 : num;
     this.canaryBackends.set(serviceName, {
       generation,
-      weight: Math.max(0, Math.min(1, normalizedWeight))
+      weight: Math.max(0, Math.min(1, normalizedWeight)),
     });
+
+    const targetPort =
+      publicPort ||
+      generation?.publicPort ||
+      (this.servers.size === 1 ? this.servers.keys().next().value : null);
+    if (targetPort) {
+      this.registerServicePort(serviceName, targetPort);
+    }
   }
 
   /**
@@ -54,7 +88,8 @@ export class Router {
   promoteCanary(serviceName) {
     const canary = this.canaryBackends.get(serviceName);
     if (!canary || !canary.generation) return null;
-    this.switchBackend(serviceName, canary.generation);
+    const port = this.servicePorts.get(serviceName);
+    this.switchBackend(serviceName, canary.generation, port);
     this.canaryBackends.delete(serviceName);
     return canary.generation;
   }
@@ -109,26 +144,60 @@ export class Router {
 
   /**
    * Helper to find the service name matching the request.
+   * STRICT: Scoped to the listening port. Never returns an unrelated service!
+   *
    * @param {import('node:http').IncomingMessage} [req]
+   * @param {number} [listeningPort]
    * @returns {string|null}
    */
-  _resolveServiceName(req) {
-    if (this.activeBackends.size === 1) {
-      return this.activeBackends.keys().next().value;
+  _resolveServiceName(req, listeningPort = null) {
+    const numPort = listeningPort ? Number(listeningPort) : null;
+    let candidateNames = null;
+
+    if (numPort && this.portServices.has(numPort)) {
+      candidateNames = Array.from(this.portServices.get(numPort));
+    } else if (this.activeBackends.size > 0 || this.canaryBackends.size > 0) {
+      candidateNames = Array.from(
+        new Set([...this.activeBackends.keys(), ...this.canaryBackends.keys()]),
+      );
     }
-    if (this.activeBackends.size > 1 && req?.headers?.host) {
-      for (const srv of this.activeBackends.keys()) {
-        if (req.headers.host.includes(srv)) {
+
+    if (!candidateNames || candidateNames.length === 0) {
+      return null;
+    }
+
+    // Single service registered on this port: unconditionally routes to it
+    if (candidateNames.length === 1) {
+      return candidateNames[0];
+    }
+
+    // Multiple services registered on this port: match by Host header
+    if (req?.headers?.host) {
+      const hostRaw = req.headers.host.split(':')[0].toLowerCase();
+      const hostNormalized = hostRaw.replace(/[^a-z0-9]/g, '');
+
+      // 1. Exact match
+      for (const srv of candidateNames) {
+        if (hostRaw === srv.toLowerCase()) {
+          return srv;
+        }
+      }
+
+      // 2. Normalized match (e.g. "supanote.app" matches service "supanoteapp")
+      for (const srv of candidateNames) {
+        const srvNorm = srv.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (
+          hostNormalized === srvNorm ||
+          hostNormalized.includes(srvNorm) ||
+          srvNorm.includes(hostNormalized)
+        ) {
           return srv;
         }
       }
     }
-    if (this.activeBackends.size > 0) {
-      return this.activeBackends.keys().next().value;
-    }
-    if (this.canaryBackends.size > 0) {
-      return this.canaryBackends.keys().next().value;
-    }
+
+    // STRICT: Return null if host does not match any service on this port.
+    // NEVER fall back to another random service.
     return null;
   }
 
@@ -172,9 +241,17 @@ export class Router {
    *
    * @param {string} serviceName
    * @param {object} generation - { id, internalPort, service }
+   * @param {number} [publicPort]
    */
-  switchBackend(serviceName, generation) {
+  switchBackend(serviceName, generation, publicPort = null) {
     this.activeBackends.set(serviceName, generation);
+    const targetPort =
+      publicPort ||
+      generation?.publicPort ||
+      (this.servers.size === 1 ? this.servers.keys().next().value : null);
+    if (targetPort) {
+      this.registerServicePort(serviceName, targetPort);
+    }
   }
 
   /**
@@ -189,44 +266,52 @@ export class Router {
 
   /**
    * Starts listening on the public port.
+   * Supports multiple distinct ports concurrently without closing existing ones.
    *
    * @param {number} publicPort
    * @param {string} [host='0.0.0.0']
+   * @param {string} [serviceName=null]
    * @returns {Promise<{ port: number, host: string }>}
    */
-  async listen(publicPort, host = '0.0.0.0') {
-    if (this.server && this.listeningPort === publicPort) {
-      return { port: this.listeningPort, host: this.listeningHost };
+  async listen(publicPort, host = '0.0.0.0', serviceName = null) {
+    const portNum = Number(publicPort);
+    if (serviceName) {
+      this.registerServicePort(serviceName, portNum);
     }
 
-    if (this.server) {
-      await this.close();
+    const existing = this.servers.get(portNum);
+    if (existing && existing.server) {
+      this.listeningPort = portNum;
+      this.listeningHost = existing.host;
+      this.server = existing.server;
+      return { port: portNum, host: existing.host };
     }
 
     this.closing = false;
 
     return new Promise((resolve, reject) => {
       const server = http.createServer((req, res) => {
-        this._handleHttpRequest(req, res);
+        this._handleHttpRequest(req, res, portNum);
       });
 
       server.on('upgrade', (req, clientSocket, head) => {
-        this._handleWebSocketUpgrade(req, clientSocket, head);
+        this._handleWebSocketUpgrade(req, clientSocket, head, portNum);
       });
 
       server.once('error', (err) => {
         if (err.code === 'EADDRINUSE') {
-          reject(new Error(`Public port ${publicPort} is already occupied by another process.`));
+          reject(new Error(`Public port ${portNum} is already occupied by another process.`));
         } else {
           reject(err);
         }
       });
 
-      server.listen(publicPort, host, () => {
-        this.server = server;
-        const actualPort = server.address() ? server.address().port : publicPort;
+      server.listen(portNum, host, () => {
+        this.servers.set(portNum, { server, port: portNum, host });
+        const actualPort = server.address() ? server.address().port : portNum;
         this.listeningPort = actualPort;
         this.listeningHost = host;
+        this.server = server;
         resolve({ port: actualPort, host });
       });
     });
@@ -237,17 +322,32 @@ export class Router {
    *
    * @param {import('node:http').IncomingMessage} req
    * @param {import('node:http').ServerResponse} res
+   * @param {number} [listeningPort]
    */
-  _handleHttpRequest(req, res) {
-    const serviceName = this._resolveServiceName(req);
+  _handleHttpRequest(req, res, listeningPort = null) {
+    const effectivePort = listeningPort || this.listeningPort;
+    const serviceName = this._resolveServiceName(req, effectivePort);
     const backend = serviceName ? this.resolveBackend(serviceName, req) : null;
+
+    if (!serviceName) {
+      res.writeHead(503, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Retry-After': '1',
+      });
+      res.end(
+        `503 Service Unavailable: No service matching host "${req?.headers?.host || 'unknown'}" on port ${effectivePort}.`,
+      );
+      return;
+    }
 
     if (!backend || !backend.internalPort) {
       res.writeHead(503, {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Retry-After': '1'
+        'Retry-After': '1',
       });
-      res.end('503 Service Unavailable: No active generation backend available.');
+      res.end(
+        `503 Service Unavailable: No active generation backend available for service "${serviceName}".`,
+      );
       return;
     }
 
@@ -272,8 +372,8 @@ export class Router {
       ? `${forwardedHeaders['x-forwarded-for']}, ${clientIp}`
       : clientIp;
     forwardedHeaders['x-forwarded-proto'] = forwardedHeaders['x-forwarded-proto'] || 'http';
-    forwardedHeaders['x-forwarded-host'] = req.headers.host || `localhost:${this.listeningPort}`;
-    forwardedHeaders['x-forwarded-port'] = String(this.listeningPort);
+    forwardedHeaders['x-forwarded-host'] = req.headers.host || `localhost:${effectivePort}`;
+    forwardedHeaders['x-forwarded-port'] = String(effectivePort);
 
     const proxyReq = http.request(
       {
@@ -281,12 +381,12 @@ export class Router {
         port: backend.internalPort,
         path: req.url,
         method: req.method,
-        headers: forwardedHeaders
+        headers: forwardedHeaders,
       },
       (proxyRes) => {
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
         proxyRes.pipe(res);
-      }
+      },
     );
 
     req.on('error', () => {
@@ -310,10 +410,11 @@ export class Router {
   /**
    * Dispatches and proxies WebSocket / Upgrade connections to the active backend.
    */
-  _handleWebSocketUpgrade(req, clientSocket, head) {
-    const serviceName = this._resolveServiceName(req);
+  _handleWebSocketUpgrade(req, clientSocket, head, listeningPort = null) {
+    const effectivePort = listeningPort || this.listeningPort;
+    const serviceName = this._resolveServiceName(req, effectivePort);
     const backend = serviceName ? this.resolveBackend(serviceName, req) : null;
-    if (!backend || !backend.internalPort) {
+    if (!serviceName || !backend || !backend.internalPort) {
       clientSocket.destroy();
       return;
     }
@@ -348,7 +449,7 @@ export class Router {
           Object.entries(req.headers)
             .map(([k, v]) => `${k}: ${v}\r\n`)
             .join('') +
-          '\r\n'
+          '\r\n',
       );
       if (head && head.length > 0) {
         backendSocket.write(head);
@@ -370,21 +471,52 @@ export class Router {
   }
 
   /**
-   * Closes the public router HTTP listener.
+   * Closes the public router HTTP listener(s).
    *
+   * @param {number} [port=null] - Specific port to close, or null to close all.
    * @returns {Promise<void>}
    */
-  async close() {
-    this.closing = true;
-    if (!this.server) return;
-
-    return new Promise((resolve) => {
-      this.server.close(() => {
-        this.server = null;
-        this.listeningPort = null;
-        this.listeningHost = null;
-        resolve();
+  async close(port = null) {
+    if (port !== null) {
+      const portNum = Number(port);
+      const entry = this.servers.get(portNum);
+      if (!entry || !entry.server) return;
+      return new Promise((resolve) => {
+        if (typeof entry.server.closeAllConnections === 'function')
+          entry.server.closeAllConnections();
+        entry.server.close(() => {
+          this.servers.delete(portNum);
+          this.portServices.delete(portNum);
+          if (this.listeningPort === portNum) {
+            const nextEntry = this.servers.values().next().value;
+            this.server = nextEntry ? nextEntry.server : null;
+            this.listeningPort = nextEntry ? nextEntry.port : null;
+            this.listeningHost = nextEntry ? nextEntry.host : null;
+          }
+          resolve();
+        });
       });
-    });
+    }
+
+    this.closing = true;
+    const closePromises = [];
+    for (const [, entry] of this.servers.entries()) {
+      if (entry.server) {
+        closePromises.push(
+          new Promise((resolve) => {
+            if (typeof entry.server.closeAllConnections === 'function')
+              entry.server.closeAllConnections();
+            entry.server.close(() => resolve());
+          }),
+        );
+      }
+    }
+    await Promise.all(closePromises);
+    this.servers.clear();
+    this.portServices.clear();
+    this.servicePorts.clear();
+    this.server = null;
+    this.listeningPort = null;
+    this.listeningHost = null;
   }
 }

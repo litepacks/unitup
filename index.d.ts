@@ -86,6 +86,24 @@ export interface CreateServiceOptions {
       };
 
   /**
+   * Maximum log level written to systemd journal.
+   * @default "info"
+   */
+  logLevelMax?: string;
+
+  /**
+   * Rate limit interval for systemd journal logging.
+   * @default "10s"
+   */
+  logRateLimitIntervalSec?: string;
+
+  /**
+   * Maximum number of logs per interval before rate limiting kicks in.
+   * @default 200
+   */
+  logRateLimitBurst?: number;
+
+  /**
    * Positional arguments to pass to the script/command execution line.
    */
   args?: string[];
