@@ -20,3 +20,6 @@ coverage/
 .env.*
 tmp/
 temp/
+
+# Release tools
+.litepacks-release-tools/
