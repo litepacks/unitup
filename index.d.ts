@@ -593,16 +593,27 @@ export function generations(name: string, options?: Record<string, unknown>): Ge
 
 export class ProcessManager {
   constructor(options?: Record<string, unknown>);
-  start(command: string, args?: string[], options?: Record<string, unknown>): { pid: number; child: any; exitPromise: Promise<any> };
+  start(
+    command: string,
+    args?: string[],
+    options?: Record<string, unknown>
+  ): { pid: number; child: any; exitPromise: Promise<any> };
   stop(processOrPid: number | object, options?: { timeout?: number; signal?: string }): Promise<boolean>;
   signal(processOrPid: number | object, signal?: string): boolean;
   isAlive(processOrPid: number | object): boolean;
-  waitForExit(processOrPid: number | object, timeout?: number): Promise<{ exited: boolean; code?: number | null; signal?: string | null }>;
+  waitForExit(
+    processOrPid: number | object,
+    timeout?: number
+  ): Promise<{ exited: boolean; code?: number | null; signal?: string | null }>;
 }
 
 export class GenerationManager {
   constructor(options?: Record<string, unknown>);
-  create(serviceName: string, config?: Record<string, unknown>, options?: Record<string, unknown>): Promise<GenerationRecord>;
+  create(
+    serviceName: string,
+    config?: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): Promise<GenerationRecord>;
   getActive(serviceName: string): GenerationRecord | null;
   getPrevious(serviceName: string): GenerationRecord | null;
   getCanary(serviceName: string): GenerationRecord | null;
@@ -634,12 +645,18 @@ export class ReadinessChecker {
   checkTcp(port: number, host?: string, timeout?: number): Promise<boolean>;
   checkHttp(port: number, path?: string, timeout?: number): Promise<boolean>;
   ensure(generation: GenerationRecord, options?: { path?: string }): Promise<boolean>;
-  wait(generation: GenerationRecord, options?: { timeout?: number; interval?: number; path?: string }): Promise<boolean>;
+  wait(
+    generation: GenerationRecord,
+    options?: { timeout?: number; interval?: number; path?: string }
+  ): Promise<boolean>;
 }
 
 export class DrainManager {
   constructor(options?: Record<string, unknown>);
-  drain(generation: GenerationRecord, options?: { timeout?: number; pollInterval?: number; stopProcess?: boolean }): Promise<{ drained: boolean; inFlightRemaining: number; timedOut: boolean }>;
+  drain(
+    generation: GenerationRecord,
+    options?: { timeout?: number; pollInterval?: number; stopProcess?: boolean }
+  ): Promise<{ drained: boolean; inFlightRemaining: number; timedOut: boolean }>;
 }
 
 export class DeploymentLock {
@@ -650,13 +667,25 @@ export class DeploymentLock {
 
 export class DeploymentManager {
   constructor(options?: Record<string, unknown>);
-  deploy(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>): Promise<DeploymentResult>;
-  promote(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>): Promise<PromoteResult>;
+  deploy(
+    serviceName: string,
+    serviceConfig?: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): Promise<DeploymentResult>;
+  promote(
+    serviceName: string,
+    serviceConfig?: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): Promise<PromoteResult>;
 }
 
 export class RollbackManager {
   constructor(options?: Record<string, unknown>);
-  rollback(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>): Promise<RollbackResult>;
+  rollback(
+    serviceName: string,
+    serviceConfig?: Record<string, unknown>,
+    options?: Record<string, unknown>
+  ): Promise<RollbackResult>;
 }
 
 export class Supervisor {

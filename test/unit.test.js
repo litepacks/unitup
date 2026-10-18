@@ -11,7 +11,7 @@ import {
   getServiceNameFromUnit,
   getUnitFilename,
   resolveAbsolutePath,
-  sanitizeServiceName,
+  sanitizeServiceName
 } from '../src/utils.js';
 
 describe('utils.js', () => {
@@ -62,10 +62,7 @@ describe('utils.js', () => {
     });
 
     test('formatSystemdEnv rejects invalid keys', () => {
-      assert.throws(
-        () => formatSystemdEnv('INVALID-KEY', 'val'),
-        /Invalid environment variable key/,
-      );
+      assert.throws(() => formatSystemdEnv('INVALID-KEY', 'val'), /Invalid environment variable key/);
       assert.throws(() => formatSystemdEnv('123NUM', 'val'), /Invalid environment variable key/);
     });
 
@@ -95,7 +92,7 @@ describe('utils.js', () => {
       assert.equal(formatDuration(86400000), '1 day');
       assert.equal(formatDuration(172800000), '2 days');
       assert.equal(formatDuration(-10), '-');
-      assert.equal(formatDuration(NaN), '-');
+      assert.equal(formatDuration(Number.NaN), '-');
       assert.equal(formatDuration('invalid'), '-');
     });
   });
@@ -104,12 +101,12 @@ describe('utils.js', () => {
     test('formats data into aligned table output', () => {
       const data = [
         { name: 'api', status: 'running', enabled: 'yes' },
-        { name: 'worker', status: 'stopped', enabled: 'no' },
+        { name: 'worker', status: 'stopped', enabled: 'no' }
       ];
       const cols = [
         { key: 'name', label: 'NAME' },
         { key: 'status', label: 'STATUS' },
-        { key: 'enabled', label: 'ENABLED' },
+        { key: 'enabled', label: 'ENABLED' }
       ];
       const table = formatTable(data, cols);
       assert.match(table, /NAME\s+STATUS\s+ENABLED/);
@@ -134,7 +131,7 @@ describe('unit.js', () => {
       env: { NODE_ENV: 'production', PORT: '3000' },
       envFile,
       restart: 'on-failure',
-      args: ['--port', '3000'],
+      args: ['--port', '3000']
     });
 
     assert.match(content, /\[Unit\]/);

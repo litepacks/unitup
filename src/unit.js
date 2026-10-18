@@ -16,7 +16,7 @@ import {
   sanitizeServiceName,
   saveAppMetadata,
   saveScheduleMetadata,
-  validateDuration,
+  validateDuration
 } from './utils.js';
 
 /**
@@ -119,7 +119,7 @@ export function generateUnitContent(opts) {
     'StandardError=journal',
     `LogLevelMax=${logLevelMax}`,
     `LogRateLimitIntervalSec=${logRateLimitIntervalSec}`,
-    `LogRateLimitBurst=${logRateLimitBurst}`,
+    `LogRateLimitBurst=${logRateLimitBurst}`
   ];
 
   const effectiveLimits = resolveEffectiveMemoryLimits(opts);
@@ -185,7 +185,7 @@ export function writeUnitFile(opts) {
     memoryHigh: opts.memoryHigh || opts.resources?.memoryHigh,
     memoryMax: opts.memoryMax || opts.resources?.memoryMax,
     memorySwapMax: opts.memorySwapMax || opts.resources?.memorySwapMax,
-    resources: opts.resources,
+    resources: opts.resources
   });
 
   return { path: unitPath, content };
@@ -228,7 +228,7 @@ export function listUnitFiles() {
       units.push({
         name,
         filename,
-        path: path.join(unitDir, filename),
+        path: path.join(unitDir, filename)
       });
     }
   }
@@ -254,9 +254,7 @@ export function parseUnitContent(content) {
     } else if (trimmed.startsWith('ExecStart=')) {
       const execVal = trimmed.slice(10).trim();
       const parts = execVal.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
-      const cleanParts = parts.map((p) =>
-        p.replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
-      );
+      const cleanParts = parts.map((p) => p.replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\\\/g, '\\'));
       if (cleanParts.length > 0) {
         result.command = cleanParts[0];
         result.args = cleanParts.slice(1);
@@ -279,7 +277,7 @@ export function parseUnitContent(content) {
     } else if (trimmed.startsWith('LogRateLimitIntervalSec=')) {
       result.logRateLimitIntervalSec = trimmed.slice(24).trim();
     } else if (trimmed.startsWith('LogRateLimitBurst=')) {
-      result.logRateLimitBurst = parseInt(trimmed.slice(18).trim(), 10);
+      result.logRateLimitBurst = Number.parseInt(trimmed.slice(18).trim(), 10);
     }
   }
 
@@ -324,9 +322,7 @@ export function generateScheduleServiceContent(opts) {
     commandExec = opts.nodePath ? resolveAbsolutePath(opts.nodePath) : process.execPath;
     execArgs = [scriptPath, ...(Array.isArray(opts.args) ? opts.args : [])];
   } else {
-    throw new Error(
-      'Either "command" or "script" must be provided to generate scheduled unit file.',
-    );
+    throw new Error('Either "command" or "script" must be provided to generate scheduled unit file.');
   }
 
   const cwd = resolveWorkingDirectory(opts);
@@ -357,7 +353,7 @@ export function generateScheduleServiceContent(opts) {
     'StandardError=journal',
     `LogLevelMax=${logLevelMax}`,
     `LogRateLimitIntervalSec=${logRateLimitIntervalSec}`,
-    `LogRateLimitBurst=${logRateLimitBurst}`,
+    `LogRateLimitBurst=${logRateLimitBurst}`
   ];
 
   const effectiveLimits = resolveEffectiveMemoryLimits(opts);
@@ -478,8 +474,8 @@ export function writeScheduleUnitFiles(opts) {
       onBoot: opts.onBoot || null,
       onActive: opts.onActive || null,
       persistent: Boolean(opts.persistent),
-      randomDelay: opts.randomDelay || null,
-    },
+      randomDelay: opts.randomDelay || null
+    }
   });
 
   return { servicePath, timerPath, serviceContent, timerContent };

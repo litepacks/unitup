@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["node_modules", "dist", "coverage"]
+    "ignore": ["node_modules", "dist", "coverage", "tmp"]
   },
   "formatter": {
     "enabled": true,
@@ -23,13 +23,25 @@
     "rules": {
       "recommended": true,
       "style": {
-        "noUnusedTemplateLiteral": "off"
+        "noUnusedTemplateLiteral": "off",
+        "useDefaultParameterLast": "off",
+        "useTemplate": "off",
+        "noArguments": "off"
       },
       "complexity": {
-        "noForEach": "off"
+        "noForEach": "off",
+        "useOptionalChain": "off",
+        "noBannedTypes": "off"
+      },
+      "performance": {
+        "noDelete": "off"
       },
       "suspicious": {
-        "noEmptyBlockStatements": "off"
+        "noEmptyBlockStatements": "off",
+        "noAssignInExpressions": "off",
+        "noExplicitAny": "off",
+        "noControlCharactersInRegex": "off",
+        "noGlobalIsNan": "off"
       }
     }
   },

@@ -1,6 +1,6 @@
 import assert from 'node:assert';
-import http from 'node:http';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test, { describe } from 'node:test';
@@ -128,13 +128,12 @@ describe('DeploymentManager Orchestration Suite', () => {
     // 2. Deploy failing v2 (exits immediately)
     const v2FailingScript = `process.exit(1);`;
 
-    await assert.rejects(
-      () =>
-        deployer.deploy(
-          'api',
-          { command: process.execPath, args: ['-e', v2FailingScript] },
-          { publicPort, stabilizationWindowMs: 50, readinessTimeout: 1000 }
-        )
+    await assert.rejects(() =>
+      deployer.deploy(
+        'api',
+        { command: process.execPath, args: ['-e', v2FailingScript] },
+        { publicPort, stabilizationWindowMs: 50, readinessTimeout: 1000 }
+      )
     );
 
     // Verify v1 is still active and router still points to v1!

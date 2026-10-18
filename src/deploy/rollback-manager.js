@@ -37,7 +37,7 @@ export class RollbackManager {
     if (!this.generationManager) {
       this.generationManager = new GenerationManager({
         processManager: this.processManager,
-        stateDir: options.stateDir,
+        stateDir: options.stateDir
       });
     }
     if (!this.router) {
@@ -49,13 +49,13 @@ export class RollbackManager {
     if (!this.drainManager) {
       this.drainManager = new DrainManager({
         router: this.router,
-        processManager: this.processManager,
+        processManager: this.processManager
       });
     }
     if (!this.lock) {
       this.lock = new DeploymentLock({
         lockDir: options.lockDir,
-        processManager: this.processManager,
+        processManager: this.processManager
       });
     }
   }
@@ -83,9 +83,9 @@ export class RollbackManager {
       return ipcClient.send(
         {
           action: 'rollback',
-          options: { ...options, ...serviceConfig },
+          options: { ...options, ...serviceConfig }
         },
-        options.onProgress,
+        options.onProgress
       );
     }
 
@@ -115,7 +115,7 @@ export class RollbackManager {
           service: serviceName,
           abortedCanary: canary.id,
           activeGeneration: active ? active.id : null,
-          status: 'canary_aborted',
+          status: 'canary_aborted'
         };
       }
 
@@ -123,9 +123,7 @@ export class RollbackManager {
       const previous = this.generationManager.getPrevious(serviceName);
 
       if (!previous) {
-        throw new Error(
-          `No previous generation available to roll back to for service "${serviceName}".`,
-        );
+        throw new Error(`No previous generation available to roll back to for service "${serviceName}".`);
       }
 
       if (options.onProgress) {
@@ -135,13 +133,13 @@ export class RollbackManager {
       // Check if previous is alive
       if (!this.processManager.isAlive(previous.pid)) {
         throw new Error(
-          `Previous generation #${previous.id} (PID ${previous.pid}) is no longer running and cannot be rolled back to.`,
+          `Previous generation #${previous.id} (PID ${previous.pid}) is no longer running and cannot be rolled back to.`
         );
       }
 
       // Ensure previous generation is still ready
       const isReady = await this.readiness.ensure(previous, {
-        path: options.readyPath || config.deploy?.ready,
+        path: options.readyPath || config.deploy?.ready
       });
 
       if (!isReady) {
@@ -172,7 +170,7 @@ export class RollbackManager {
         service: serviceName,
         rolledBackFrom: current?.id ?? null,
         activeGeneration: previous.id,
-        status: 'rolled_back',
+        status: 'rolled_back'
       };
 
       if (options.onProgress) {

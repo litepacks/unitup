@@ -1,6 +1,6 @@
 import assert from 'node:assert';
-import http from 'node:http';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test, { describe } from 'node:test';
@@ -129,11 +129,7 @@ describe('Zero-Downtime Continuous Traffic Integration Test', () => {
     // Run continuous requests concurrently
     const trafficLoopPromise = (async () => {
       while (trafficActive) {
-        await Promise.all([
-          sendRequest(),
-          sendRequest(),
-          sendRequest()
-        ]);
+        await Promise.all([sendRequest(), sendRequest(), sendRequest()]);
         await new Promise((r) => setTimeout(r, 10));
       }
     })();

@@ -80,7 +80,7 @@ describe('GenerationManager Architecture Boundary Suite', () => {
       service: 'api',
       activeGeneration: 1,
       generations: {
-        '1': { id: 1, service: 'api', pid: deadPid, internalPort: 54321, status: 'active' }
+        1: { id: 1, service: 'api', pid: deadPid, internalPort: 54321, status: 'active' }
       }
     };
     gm.saveState('api', mockState);

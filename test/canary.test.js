@@ -1,21 +1,21 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import fs from 'node:fs';
 import test, { describe, beforeEach, afterEach } from 'node:test';
-import { Router } from '../src/core/router.js';
+import { parseArgs, runCli } from '../src/cli.js';
+import { DrainManager } from '../src/core/drain-manager.js';
 import { GenerationManager } from '../src/core/generation-manager.js';
-import { DeploymentManager, DeploymentState } from '../src/deploy/deployment-manager.js';
-import { RollbackManager } from '../src/deploy/rollback-manager.js';
+import { IPCClient, IPCServer } from '../src/core/ipc.js';
+import { DeploymentLock } from '../src/core/lock.js';
 import { ProcessManager } from '../src/core/process-manager.js';
 import { ReadinessChecker } from '../src/core/readiness.js';
-import { DrainManager } from '../src/core/drain-manager.js';
-import { DeploymentLock } from '../src/core/lock.js';
-import { IPCServer, IPCClient } from '../src/core/ipc.js';
+import { Router } from '../src/core/router.js';
 import { Supervisor } from '../src/core/supervisor.js';
-import { parseArgs, runCli } from '../src/cli.js';
+import { DeploymentManager, DeploymentState } from '../src/deploy/deployment-manager.js';
+import { RollbackManager } from '../src/deploy/rollback-manager.js';
 import { defaultManager } from '../src/service/manager.js';
 
 describe('Canary & Weighted Routing Suite', () => {
@@ -123,10 +123,7 @@ describe('Canary & Weighted Routing Suite', () => {
       }
 
       // At 30% with 1000 trials, count should reasonably fall within 200 - 400 (3 sigma ~ 43)
-      assert.ok(
-        canaryCount >= 200 && canaryCount <= 400,
-        `Expected canary count around 300, received: ${canaryCount}`
-      );
+      assert.ok(canaryCount >= 200 && canaryCount <= 400, `Expected canary count around 300, received: ${canaryCount}`);
     });
   });
 
@@ -493,7 +490,7 @@ describe('Canary & Weighted Routing Suite', () => {
         activeGeneration: 1,
         canaryGeneration: 2,
         generations: {
-          '1': {
+          1: {
             id: 1,
             service: 'web-app',
             pid: 4001,
@@ -502,7 +499,7 @@ describe('Canary & Weighted Routing Suite', () => {
             createdAt: new Date(now - 60000).toISOString(),
             activatedAt: new Date(now - 60000).toISOString()
           },
-          '2': {
+          2: {
             id: 2,
             service: 'web-app',
             pid: 4002,

@@ -23,7 +23,7 @@ export const DeploymentState = {
   DRAINING: 'DRAINING',
   STOPPING_PREVIOUS: 'STOPPING_PREVIOUS',
   COMPLETE: 'COMPLETE',
-  FAILED: 'FAILED',
+  FAILED: 'FAILED'
 };
 
 /**
@@ -49,8 +49,7 @@ export class DeploymentManager extends EventEmitter {
     this.drainManager = options.drainManager;
     this.processManager = options.processManager;
     this.lock = options.lock;
-    this.defaultStabilizationMs =
-      options.defaultStabilizationMs !== undefined ? options.defaultStabilizationMs : 5000;
+    this.defaultStabilizationMs = options.defaultStabilizationMs !== undefined ? options.defaultStabilizationMs : 5000;
     this.state = DeploymentState.IDLE;
   }
 
@@ -61,7 +60,7 @@ export class DeploymentManager extends EventEmitter {
     if (!this.generationManager) {
       this.generationManager = new GenerationManager({
         processManager: this.processManager,
-        stateDir: options.stateDir,
+        stateDir: options.stateDir
       });
     }
     if (!this.router) {
@@ -73,13 +72,13 @@ export class DeploymentManager extends EventEmitter {
     if (!this.drainManager) {
       this.drainManager = new DrainManager({
         router: this.router,
-        processManager: this.processManager,
+        processManager: this.processManager
       });
     }
     if (!this.lock) {
       this.lock = new DeploymentLock({
         lockDir: options.lockDir,
-        processManager: this.processManager,
+        processManager: this.processManager
       });
     }
   }
@@ -126,9 +125,9 @@ export class DeploymentManager extends EventEmitter {
       return ipcClient.send(
         {
           action: 'deploy',
-          options: { ...options, ...serviceConfig },
+          options: { ...options, ...serviceConfig }
         },
-        options.onProgress,
+        options.onProgress
       );
     }
 
@@ -154,7 +153,7 @@ export class DeploymentManager extends EventEmitter {
       this._setState(
         DeploymentState.CREATING_GENERATION,
         { service: serviceName, previousGeneration: previous?.id },
-        options.onProgress,
+        options.onProgress
       );
 
       next = await this.generationManager.create(serviceName, config, options);
@@ -166,17 +165,13 @@ export class DeploymentManager extends EventEmitter {
           service: serviceName,
           generation: next.id,
           pid: next.pid,
-          internalPort: next.internalPort,
+          internalPort: next.internalPort
         },
-        options.onProgress,
+        options.onProgress
       );
 
       // 4. WAITING_READY
-      this._setState(
-        DeploymentState.WAITING_READY,
-        { service: serviceName, generation: next.id },
-        options.onProgress,
-      );
+      this._setState(DeploymentState.WAITING_READY, { service: serviceName, generation: next.id }, options.onProgress);
 
       try {
         const readyPath = options.readyPath || config.deploy?.ready;
@@ -185,7 +180,7 @@ export class DeploymentManager extends EventEmitter {
           path: readyPath,
           timeout: readinessTimeout,
           configuredPort: options.publicPort || config.port,
-          router: this.router,
+          router: this.router
         });
       } catch (readinessErr) {
         // Readiness failed: clean up next generation, leave router pointing at previous
@@ -194,22 +189,16 @@ export class DeploymentManager extends EventEmitter {
         this._setState(
           DeploymentState.FAILED,
           { service: serviceName, error: readinessErr.message },
-          options.onProgress,
+          options.onProgress
         );
         throw readinessErr;
       }
 
       const isCanary = Boolean(options.canary);
       const rawWeight =
-        options.weight !== undefined
-          ? options.weight
-          : options.canaryWeight !== undefined
-            ? options.canaryWeight
-            : 0.1;
+        options.weight !== undefined ? options.weight : options.canaryWeight !== undefined ? options.canaryWeight : 0.1;
       const parsedWeight =
-        typeof rawWeight === 'string'
-          ? Number.parseFloat(rawWeight.replace('%', ''))
-          : Number(rawWeight);
+        typeof rawWeight === 'string' ? Number.parseFloat(rawWeight.replace('%', '')) : Number(rawWeight);
       const numWeight = Number.isNaN(parsedWeight) ? 0.1 : parsedWeight;
       const canaryWeight = Math.max(0, Math.min(1, numWeight > 1 ? numWeight / 100 : numWeight));
 
@@ -227,7 +216,7 @@ export class DeploymentManager extends EventEmitter {
         this._setState(
           DeploymentState.SETTING_CANARY,
           { service: serviceName, generation: next.id, weight: canaryWeight },
-          options.onProgress,
+          options.onProgress
         );
 
         this.router.setCanary(serviceName, next, canaryWeight, publicPort);
@@ -240,7 +229,7 @@ export class DeploymentManager extends EventEmitter {
           canaryGeneration: next.id,
           canaryWeight,
           downtimeMs: 0,
-          status: 'canary',
+          status: 'canary'
         };
 
         this._setState(DeploymentState.COMPLETE, result, options.onProgress);
@@ -248,11 +237,7 @@ export class DeploymentManager extends EventEmitter {
       }
 
       // 5. SWITCHING
-      this._setState(
-        DeploymentState.SWITCHING,
-        { service: serviceName, generation: next.id },
-        options.onProgress,
-      );
+      this._setState(DeploymentState.SWITCHING, { service: serviceName, generation: next.id }, options.onProgress);
 
       const publicPort = options.publicPort || config.port;
       if (publicPort) {
@@ -263,16 +248,10 @@ export class DeploymentManager extends EventEmitter {
       this.generationManager.markActive(next);
 
       // 6. STABILIZING
-      this._setState(
-        DeploymentState.STABILIZING,
-        { service: serviceName, generation: next.id },
-        options.onProgress,
-      );
+      this._setState(DeploymentState.STABILIZING, { service: serviceName, generation: next.id }, options.onProgress);
 
       const stabilizationMs =
-        options.stabilizationWindowMs !== undefined
-          ? options.stabilizationWindowMs
-          : this.defaultStabilizationMs;
+        options.stabilizationWindowMs !== undefined ? options.stabilizationWindowMs : this.defaultStabilizationMs;
 
       if (stabilizationMs > 0) {
         const checkInterval = 50;
@@ -289,12 +268,12 @@ export class DeploymentManager extends EventEmitter {
               DeploymentState.FAILED,
               {
                 service: serviceName,
-                error: `Generation #${next.id} crashed during stabilization window.`,
+                error: `Generation #${next.id} crashed during stabilization window.`
               },
-              options.onProgress,
+              options.onProgress
             );
             throw new Error(
-              `Generation #${next.id} crashed during stabilization window. Rolled back traffic to previous generation #${previous?.id || 'none'}.`,
+              `Generation #${next.id} crashed during stabilization window. Rolled back traffic to previous generation #${previous?.id || 'none'}.`
             );
           }
           await new Promise((resolve) => setTimeout(resolve, checkInterval));
@@ -303,11 +282,7 @@ export class DeploymentManager extends EventEmitter {
 
       // 7. DRAINING
       if (previous && previous.id !== next.id) {
-        this._setState(
-          DeploymentState.DRAINING,
-          { service: serviceName, generation: previous.id },
-          options.onProgress,
-        );
+        this._setState(DeploymentState.DRAINING, { service: serviceName, generation: previous.id }, options.onProgress);
 
         this.generationManager.markDraining(previous);
         const drainTimeout = options.drainTimeout || config.deploy?.drainTimeout || 10000;
@@ -319,7 +294,7 @@ export class DeploymentManager extends EventEmitter {
         this._setState(
           DeploymentState.STOPPING_PREVIOUS,
           { service: serviceName, generation: previous.id },
-          options.onProgress,
+          options.onProgress
         );
 
         await this.processManager.stop(previous.pid, { timeout: 3000 });
@@ -332,7 +307,7 @@ export class DeploymentManager extends EventEmitter {
         previousGeneration: previous?.id ?? null,
         currentGeneration: next.id,
         downtimeMs: 0,
-        status: 'complete',
+        status: 'complete'
       };
 
       this._setState(DeploymentState.COMPLETE, result, options.onProgress);
@@ -371,7 +346,7 @@ export class DeploymentManager extends EventEmitter {
       this._setState(
         DeploymentState.PROMOTING,
         { service: serviceName, generation: canaryGen.id, previousGeneration: previous?.id },
-        options.onProgress,
+        options.onProgress
       );
 
       // 1. Promote in Router (clears canary, makes it primary)
@@ -380,11 +355,7 @@ export class DeploymentManager extends EventEmitter {
 
       // 2. Drain previous generation
       if (previous && previous.id !== canaryGen.id) {
-        this._setState(
-          DeploymentState.DRAINING,
-          { service: serviceName, generation: previous.id },
-          options.onProgress,
-        );
+        this._setState(DeploymentState.DRAINING, { service: serviceName, generation: previous.id }, options.onProgress);
         this.generationManager.markDraining(previous);
         const drainTimeout = options.drainTimeout || config.deploy?.drainTimeout || 10000;
         await this.drainManager.drain(previous, { timeout: drainTimeout, stopProcess: false });
@@ -392,7 +363,7 @@ export class DeploymentManager extends EventEmitter {
         this._setState(
           DeploymentState.STOPPING_PREVIOUS,
           { service: serviceName, generation: previous.id },
-          options.onProgress,
+          options.onProgress
         );
         await this.processManager.stop(previous.pid, { timeout: 3000 });
         this.generationManager.remove(previous, false);
@@ -403,7 +374,7 @@ export class DeploymentManager extends EventEmitter {
         promotedGeneration: canaryGen.id,
         previousGeneration: previous?.id ?? null,
         downtimeMs: 0,
-        status: 'promoted',
+        status: 'promoted'
       };
 
       this._setState(DeploymentState.COMPLETE, result, options.onProgress);

@@ -216,13 +216,13 @@ describe('Router Architecture Boundary Suite', () => {
 
     // Unmatched host must return 503, NEVER randomly choose myservice1
     const resUnknown = await fetchText(`http://127.0.0.1:${publicPort}/`, {
-      Host: 'completelyunknown.com',
+      Host: 'completelyunknown.com'
     });
     assert.strictEqual(resUnknown.status, 503);
 
     // Matching host returns correct service
     const resMatched = await fetchText(`http://127.0.0.1:${publicPort}/`, {
-      Host: 'myservice2.com',
+      Host: 'myservice2.com'
     });
     assert.strictEqual(resMatched.status, 200);
     assert.strictEqual(resMatched.body, 'app2');

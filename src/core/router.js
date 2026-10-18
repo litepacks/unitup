@@ -51,19 +51,16 @@ export class Router {
    * @param {number} [publicPort]
    */
   setCanary(serviceName, generation, weight = 0.1, publicPort = null) {
-    const parsed =
-      typeof weight === 'string' ? Number.parseFloat(weight.replace('%', '')) : Number(weight);
+    const parsed = typeof weight === 'string' ? Number.parseFloat(weight.replace('%', '')) : Number(weight);
     const num = Number.isNaN(parsed) ? 0.1 : parsed;
     const normalizedWeight = num > 1 ? num / 100 : num;
     this.canaryBackends.set(serviceName, {
       generation,
-      weight: Math.max(0, Math.min(1, normalizedWeight)),
+      weight: Math.max(0, Math.min(1, normalizedWeight))
     });
 
     const targetPort =
-      publicPort ||
-      generation?.publicPort ||
-      (this.servers.size === 1 ? this.servers.keys().next().value : null);
+      publicPort || generation?.publicPort || (this.servers.size === 1 ? this.servers.keys().next().value : null);
     if (targetPort) {
       this.registerServicePort(serviceName, targetPort);
     }
@@ -157,9 +154,7 @@ export class Router {
     if (numPort && this.portServices.has(numPort)) {
       candidateNames = Array.from(this.portServices.get(numPort));
     } else if (this.activeBackends.size > 0 || this.canaryBackends.size > 0) {
-      candidateNames = Array.from(
-        new Set([...this.activeBackends.keys(), ...this.canaryBackends.keys()]),
-      );
+      candidateNames = Array.from(new Set([...this.activeBackends.keys(), ...this.canaryBackends.keys()]));
     }
 
     if (!candidateNames || candidateNames.length === 0) {
@@ -186,11 +181,7 @@ export class Router {
       // 2. Normalized match (e.g. "supanote.app" matches service "supanoteapp")
       for (const srv of candidateNames) {
         const srvNorm = srv.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (
-          hostNormalized === srvNorm ||
-          hostNormalized.includes(srvNorm) ||
-          srvNorm.includes(hostNormalized)
-        ) {
+        if (hostNormalized === srvNorm || hostNormalized.includes(srvNorm) || srvNorm.includes(hostNormalized)) {
           return srv;
         }
       }
@@ -246,9 +237,7 @@ export class Router {
   switchBackend(serviceName, generation, publicPort = null) {
     this.activeBackends.set(serviceName, generation);
     const targetPort =
-      publicPort ||
-      generation?.publicPort ||
-      (this.servers.size === 1 ? this.servers.keys().next().value : null);
+      publicPort || generation?.publicPort || (this.servers.size === 1 ? this.servers.keys().next().value : null);
     if (targetPort) {
       this.registerServicePort(serviceName, targetPort);
     }
@@ -332,10 +321,10 @@ export class Router {
     if (!serviceName) {
       res.writeHead(503, {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Retry-After': '1',
+        'Retry-After': '1'
       });
       res.end(
-        `503 Service Unavailable: No service matching host "${req?.headers?.host || 'unknown'}" on port ${effectivePort}.`,
+        `503 Service Unavailable: No service matching host "${req?.headers?.host || 'unknown'}" on port ${effectivePort}.`
       );
       return;
     }
@@ -343,11 +332,9 @@ export class Router {
     if (!backend || !backend.internalPort) {
       res.writeHead(503, {
         'Content-Type': 'text/plain; charset=utf-8',
-        'Retry-After': '1',
+        'Retry-After': '1'
       });
-      res.end(
-        `503 Service Unavailable: No active generation backend available for service "${serviceName}".`,
-      );
+      res.end(`503 Service Unavailable: No active generation backend available for service "${serviceName}".`);
       return;
     }
 
@@ -381,12 +368,12 @@ export class Router {
         port: backend.internalPort,
         path: req.url,
         method: req.method,
-        headers: forwardedHeaders,
+        headers: forwardedHeaders
       },
       (proxyRes) => {
         res.writeHead(proxyRes.statusCode, proxyRes.headers);
         proxyRes.pipe(res);
-      },
+      }
     );
 
     req.on('error', () => {
@@ -449,7 +436,7 @@ export class Router {
           Object.entries(req.headers)
             .map(([k, v]) => `${k}: ${v}\r\n`)
             .join('') +
-          '\r\n',
+          '\r\n'
       );
       if (head && head.length > 0) {
         backendSocket.write(head);
@@ -482,8 +469,7 @@ export class Router {
       const entry = this.servers.get(portNum);
       if (!entry || !entry.server) return;
       return new Promise((resolve) => {
-        if (typeof entry.server.closeAllConnections === 'function')
-          entry.server.closeAllConnections();
+        if (typeof entry.server.closeAllConnections === 'function') entry.server.closeAllConnections();
         entry.server.close(() => {
           this.servers.delete(portNum);
           this.portServices.delete(portNum);
@@ -504,10 +490,9 @@ export class Router {
       if (entry.server) {
         closePromises.push(
           new Promise((resolve) => {
-            if (typeof entry.server.closeAllConnections === 'function')
-              entry.server.closeAllConnections();
+            if (typeof entry.server.closeAllConnections === 'function') entry.server.closeAllConnections();
             entry.server.close(() => resolve());
-          }),
+          })
         );
       }
     }

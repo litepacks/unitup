@@ -1,3 +1,5 @@
+import { DeploymentManager } from '../deploy/deployment-manager.js';
+import { RollbackManager } from '../deploy/rollback-manager.js';
 import { readAppMetadata, sanitizeServiceName } from '../utils.js';
 import { DrainManager } from './drain-manager.js';
 import { GenerationManager } from './generation-manager.js';
@@ -6,8 +8,6 @@ import { DeploymentLock } from './lock.js';
 import { ProcessManager } from './process-manager.js';
 import { ReadinessChecker } from './readiness.js';
 import { Router } from './router.js';
-import { DeploymentManager } from '../deploy/deployment-manager.js';
-import { RollbackManager } from '../deploy/rollback-manager.js';
 
 /**
  * Supervisor is the long-running host managed by the OS service manager (unitupd).
@@ -25,24 +25,24 @@ export class Supervisor {
     this.options = options;
 
     this.processManager = new ProcessManager({
-      defaultShutdownTimeout: this.config.shutdownTimeout || 5000,
+      defaultShutdownTimeout: this.config.shutdownTimeout || 5000
     });
 
     this.generationManager = new GenerationManager({
       processManager: this.processManager,
-      stateDir: options.stateDir,
+      stateDir: options.stateDir
     });
 
     this.router = new Router();
     this.readiness = new ReadinessChecker({ processManager: this.processManager });
     this.drainManager = new DrainManager({
       router: this.router,
-      processManager: this.processManager,
+      processManager: this.processManager
     });
 
     this.lock = new DeploymentLock({
       lockDir: options.lockDir,
-      processManager: this.processManager,
+      processManager: this.processManager
     });
 
     this.deploymentManager = new DeploymentManager({
@@ -52,8 +52,7 @@ export class Supervisor {
       drainManager: this.drainManager,
       processManager: this.processManager,
       lock: this.lock,
-      defaultStabilizationMs:
-        options.stabilizationWindowMs !== undefined ? options.stabilizationWindowMs : 5000,
+      defaultStabilizationMs: options.stabilizationWindowMs !== undefined ? options.stabilizationWindowMs : 5000
     });
 
     this.rollbackManager = new RollbackManager({
@@ -62,13 +61,13 @@ export class Supervisor {
       readiness: this.readiness,
       drainManager: this.drainManager,
       processManager: this.processManager,
-      lock: this.lock,
+      lock: this.lock
     });
 
     this.ipcServer = new IPCServer({
       serviceName: this.serviceName,
       ipcDir: options.ipcDir,
-      handler: this._handleIpcMessage.bind(this),
+      handler: this._handleIpcMessage.bind(this)
     });
 
     this.running = false;
@@ -86,7 +85,7 @@ export class Supervisor {
       const freshConfig = readAppMetadata(this.serviceName) || this.config;
       return this.deploymentManager.deploy(this.serviceName, freshConfig, {
         ...message.options,
-        onProgress: sendProgress,
+        onProgress: sendProgress
       });
     }
 
@@ -94,7 +93,7 @@ export class Supervisor {
       const freshConfig = readAppMetadata(this.serviceName) || this.config;
       return this.rollbackManager.rollback(this.serviceName, freshConfig, {
         ...message.options,
-        onProgress: sendProgress,
+        onProgress: sendProgress
       });
     }
 
@@ -102,7 +101,7 @@ export class Supervisor {
       const freshConfig = readAppMetadata(this.serviceName) || this.config;
       return this.deploymentManager.promote(this.serviceName, freshConfig, {
         ...message.options,
-        onProgress: sendProgress,
+        onProgress: sendProgress
       });
     }
 
@@ -118,7 +117,7 @@ export class Supervisor {
         canaryWeight: canaryRouter?.weight ?? canaryGen?.canaryWeight ?? null,
         generations: this.generationManager.listGenerations(this.serviceName),
         routerPort: this.router.listeningPort,
-        inFlightRequests: active ? this.router.getInFlightCount(active.id) : 0,
+        inFlightRequests: active ? this.router.getInFlightCount(active.id) : 0
       };
     }
 
@@ -156,7 +155,7 @@ export class Supervisor {
       // Start initial generation
       await this.deploymentManager.deploy(this.serviceName, this.config, {
         publicPort,
-        stabilizationWindowMs: this.options.stabilizationWindowMs,
+        stabilizationWindowMs: this.options.stabilizationWindowMs
       });
     }
 

@@ -1,6 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import { GenerationManager } from './core/generation-manager.js';
+import { IPCClient } from './core/ipc.js';
+import { Supervisor } from './core/supervisor.js';
+import {
+  defaultDeploymentManager as deploymentManager,
+  defaultRollbackManager as rollbackManager
+} from './deploy/index.js';
 import { runDoctor } from './doctor.js';
 import { getAdapter } from './platform/index.js';
 import {
@@ -47,13 +54,6 @@ import {
   saveProjectConfig,
   validateMemorySize
 } from './utils.js';
-import { GenerationManager } from './core/generation-manager.js';
-import { IPCClient } from './core/ipc.js';
-import { Supervisor } from './core/supervisor.js';
-import {
-  defaultDeploymentManager as deploymentManager,
-  defaultRollbackManager as rollbackManager
-} from './deploy/index.js';
 
 /**
  * Custom light CLI argument parser without runtime dependencies.

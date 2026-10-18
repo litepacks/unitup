@@ -170,7 +170,8 @@ export class ReadinessChecker {
     while (true) {
       // 1. Fail fast if process has crashed during startup
       if (generation.pid && this.processManager && !this.processManager.isAlive(generation.pid)) {
-        const procInfo = typeof this.processManager.getProcess === 'function' ? this.processManager.getProcess(generation.pid) : null;
+        const procInfo =
+          typeof this.processManager.getProcess === 'function' ? this.processManager.getProcess(generation.pid) : null;
         const stderr = procInfo?.recentStderr || '';
 
         if (stderr.includes('EADDRINUSE') || stderr.includes('address already in use')) {

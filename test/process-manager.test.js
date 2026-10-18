@@ -24,11 +24,10 @@ describe('ProcessManager Architecture Boundary Suite', () => {
     const stderrPath = path.join(tmpDir, 'stderr.log');
 
     const pm = new ProcessManager();
-    const proc = pm.start(
-      process.execPath,
-      ['-e', 'console.log("hello stdout"); console.error("hello stderr");'],
-      { stdoutPath, stderrPath }
-    );
+    const proc = pm.start(process.execPath, ['-e', 'console.log("hello stdout"); console.error("hello stderr");'], {
+      stdoutPath,
+      stderrPath
+    });
 
     await proc.exitPromise;
 
@@ -58,10 +57,7 @@ describe('ProcessManager Architecture Boundary Suite', () => {
   test('stops gracefully with SIGTERM and escalates if necessary', async () => {
     const pm = new ProcessManager({ defaultShutdownTimeout: 500 });
     // Process that ignores SIGTERM
-    const proc = pm.start(process.execPath, [
-      '-e',
-      'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);'
-    ]);
+    const proc = pm.start(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000);']);
 
     assert.strictEqual(pm.isAlive(proc.pid), true);
 

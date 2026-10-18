@@ -63,7 +63,7 @@ describe('CLI Deploy & Rollback Commands Suite', () => {
       service: 'api',
       activeGeneration: 2,
       generations: {
-        '1': {
+        1: {
           id: 1,
           service: 'api',
           pid: 1234,
@@ -73,7 +73,7 @@ describe('CLI Deploy & Rollback Commands Suite', () => {
           activatedAt: new Date(now - 120000).toISOString(),
           stoppedAt: new Date(now - 60000).toISOString()
         },
-        '2': {
+        2: {
           id: 2,
           service: 'api',
           pid: 1235,
@@ -120,7 +120,7 @@ describe('CLI Deploy & Rollback Commands Suite', () => {
       service: 'api',
       activeGeneration: 1,
       generations: {
-        '1': {
+        1: {
           id: 1,
           service: 'api',
           pid: 5678,
@@ -165,7 +165,7 @@ describe('CLI Deploy & Rollback Commands Suite', () => {
       service: 'api',
       activeGeneration: 2,
       generations: {
-        '2': {
+        2: {
           id: 2,
           service: 'api',
           pid: 9999,
@@ -190,7 +190,7 @@ describe('CLI Deploy & Rollback Commands Suite', () => {
 
     // 1. Without supervisor running: shows internal port
     let logs = [];
-    let origLog = console.log;
+    const origLog = console.log;
     console.log = (...args) => logs.push(args.join(' '));
 
     try {

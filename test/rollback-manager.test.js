@@ -106,10 +106,7 @@ describe('RollbackManager Orchestration Suite', () => {
       lock
     });
 
-    await assert.rejects(
-      () => rollbackManager.rollback('api'),
-      /No previous generation available/
-    );
+    await assert.rejects(() => rollbackManager.rollback('api'), /No previous generation available/);
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

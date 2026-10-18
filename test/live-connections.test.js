@@ -1,6 +1,6 @@
 import assert from 'node:assert';
-import http from 'node:http';
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -78,10 +78,7 @@ describe('Live Connections (WebSocket, SSE, Chunked Upload) Drain Suite', () => 
     await new Promise((resolve) => clientSocket1.once('connect', resolve));
 
     clientSocket1.write(
-      'GET /ws HTTP/1.1\r\n' +
-      'Host: 127.0.0.1\r\n' +
-      'Upgrade: websocket\r\n' +
-      'Connection: Upgrade\r\n\r\n'
+      'GET /ws HTTP/1.1\r\n' + 'Host: 127.0.0.1\r\n' + 'Upgrade: websocket\r\n' + 'Connection: Upgrade\r\n\r\n'
     );
 
     // Wait for 101 Switching Protocols response

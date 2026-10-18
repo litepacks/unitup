@@ -1,3 +1,26 @@
+import {
+  DeploymentLock,
+  DeploymentLockError,
+  DrainManager,
+  GenerationManager,
+  IPCClient,
+  IPCServer,
+  PortMismatchError,
+  ProcessManager,
+  ProcessStartupError,
+  ReadinessChecker,
+  ReadinessTimeoutError,
+  Router,
+  Supervisor,
+  findFreePort
+} from './core/index.js';
+import {
+  DeploymentManager,
+  DeploymentState,
+  RollbackManager,
+  defaultDeploymentManager,
+  defaultRollbackManager
+} from './deploy/index.js';
 import { getDoctorInfo, runDoctor } from './doctor.js';
 import {
   ExecutableNotFoundError,
@@ -95,29 +118,6 @@ import {
   validateDuration,
   validateMemorySize
 } from './utils.js';
-import {
-  ProcessManager,
-  GenerationManager,
-  Router,
-  ReadinessChecker,
-  ReadinessTimeoutError,
-  ProcessStartupError,
-  PortMismatchError,
-  DrainManager,
-  DeploymentLock,
-  DeploymentLockError,
-  Supervisor,
-  IPCServer,
-  IPCClient,
-  findFreePort
-} from './core/index.js';
-import {
-  DeploymentManager,
-  DeploymentState,
-  defaultDeploymentManager,
-  RollbackManager,
-  defaultRollbackManager
-} from './deploy/index.js';
 
 // Aliases for unified cross-platform API
 const install = (opts) => defaultManager.install(opts);

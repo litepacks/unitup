@@ -4,8 +4,8 @@ import test, { describe } from 'node:test';
 import { findFreePort } from '../src/core/generation-manager.js';
 import { ProcessManager } from '../src/core/process-manager.js';
 import {
-  ProcessStartupError,
   PortMismatchError,
+  ProcessStartupError,
   ReadinessChecker,
   ReadinessTimeoutError
 } from '../src/core/readiness.js';
@@ -41,10 +41,7 @@ describe('ReadinessChecker Architecture Boundary Suite', () => {
     const pm = new ProcessManager();
     const readiness = new ReadinessChecker({ processManager: pm });
 
-    const isReady = await readiness.wait(
-      { id: 1, internalPort: port },
-      { timeout: 2000, path: '/health' }
-    );
+    const isReady = await readiness.wait({ id: 1, internalPort: port }, { timeout: 2000, path: '/health' });
     assert.strictEqual(isReady, true);
 
     await new Promise((r) => server.close(r));
@@ -62,11 +59,7 @@ describe('ReadinessChecker Architecture Boundary Suite', () => {
     const readiness = new ReadinessChecker({ processManager: pm });
 
     await assert.rejects(
-      () =>
-        readiness.wait(
-          { id: 1, internalPort: port },
-          { timeout: 300, interval: 50, path: '/health' }
-        ),
+      () => readiness.wait({ id: 1, internalPort: port }, { timeout: 300, interval: 50, path: '/health' }),
       (err) => err instanceof ReadinessTimeoutError
     );
 
@@ -101,11 +94,7 @@ describe('ReadinessChecker Architecture Boundary Suite', () => {
     const readiness = new ReadinessChecker({ processManager: pm });
 
     await assert.rejects(
-      () =>
-        readiness.wait(
-          { id: 1, pid: proc.pid, internalPort: port },
-          { timeout: 5000, configuredPort: 3000 }
-        ),
+      () => readiness.wait({ id: 1, pid: proc.pid, internalPort: port }, { timeout: 5000, configuredPort: 3000 }),
       (err) => {
         assert.ok(err instanceof ProcessStartupError);
         assert.ok(err.message.includes('EADDRINUSE'));
@@ -131,11 +120,7 @@ describe('ReadinessChecker Architecture Boundary Suite', () => {
 
     try {
       await assert.rejects(
-        () =>
-          readiness.wait(
-            { id: 1, pid: proc.pid, internalPort },
-            { timeout: 5000, configuredPort }
-          ),
+        () => readiness.wait({ id: 1, pid: proc.pid, internalPort }, { timeout: 5000, configuredPort }),
         (err) => {
           assert.ok(err instanceof PortMismatchError);
           assert.ok(err.message.includes(`configured public port ${configuredPort}`));
@@ -160,11 +145,7 @@ describe('ReadinessChecker Architecture Boundary Suite', () => {
 
     try {
       await assert.rejects(
-        () =>
-          readiness.wait(
-            { id: 1, pid: proc.pid, internalPort },
-            { timeout: 200, interval: 50 }
-          ),
+        () => readiness.wait({ id: 1, pid: proc.pid, internalPort }, { timeout: 200, interval: 50 }),
         (err) => {
           assert.ok(err instanceof ReadinessTimeoutError);
           assert.ok(err.message.includes('is still running, but did not accept connections on process.env.PORT'));

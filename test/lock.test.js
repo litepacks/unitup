@@ -49,10 +49,7 @@ describe('DeploymentLock Concurrency Suite', () => {
 
     // Dead PID
     const lockPath = path.join(tmpDir, 'api.deploy.lock');
-    fs.writeFileSync(
-      lockPath,
-      JSON.stringify({ service: 'api', pid: 99999999, timestamp: new Date().toISOString() })
-    );
+    fs.writeFileSync(lockPath, JSON.stringify({ service: 'api', pid: 99999999, timestamp: new Date().toISOString() }));
 
     const lock = new DeploymentLock({ lockDir: tmpDir, processManager: pm });
 
