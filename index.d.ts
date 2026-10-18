@@ -688,6 +688,12 @@ export class RollbackManager {
   ): Promise<RollbackResult>;
 }
 
+export class IPCClient {
+  constructor(serviceName: string, ipcDir?: string);
+  isAlive(): Promise<boolean>;
+  send(message: Record<string, unknown>, onProgress?: (msg: unknown) => void, timeoutMs?: number): Promise<unknown>;
+}
+
 export class Supervisor {
   constructor(serviceName: string, serviceConfig?: Record<string, unknown>, options?: Record<string, unknown>);
   start(): Promise<Supervisor>;

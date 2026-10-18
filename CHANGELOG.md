@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-18
+
+### Added
+- **Supervisor Active Generation TCP Health Verification & Self-Healing**: Supervisor now validates TCP connectivity on the internal port (`active.internalPort`) of persisted active generations at startup. If the target generation is dead or refusing connections, supervisor cleans up stale state and automatically triggers a fresh deployment, eliminating stale `502 Bad Gateway (ECONNREFUSED)` loops.
+- **Systemd Crash Loop Circuit Breaker (`RestartPreventExitStatus=78`)**: Added `RestartPreventExitStatus=78` (POSIX `EX_CONFIG`) to generated systemd unit files, paired with `StartLimitIntervalSec=30s` and `StartLimitBurst=5`. When supervisor encounters unrecoverable configuration errors (such as public port collision / `EADDRINUSE`), it exits with code 78, preventing systemd from endlessly restarting and spamming journald logs.
+- **Enhanced Connection Diagnostics in Router**: Detailed internal port and error context (`connect ECONNREFUSED 127.0.0.1:<port>`) reported on proxy failures to clarify application startup crashes.
+- **Exported `IPCClient` Type Definitions**: Exported `IPCClient` class and interface in `index.d.ts` for clean downstream programmatic integration by orchestrators.
+
+### Fixed
+- **Systemd Unit Parser & Directives**: Added extraction and preservation of `RestartPreventExitStatus` in `parseUnitContent` to maintain parity across read/write cycles.
+- **Router In-Flight Request Timing**: Resolved timing race condition in `test/router.test.js` in-flight request tracking test.
+
 ## [0.4.0] - 2026-10-18
 
 ### Added

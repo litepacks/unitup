@@ -146,12 +146,25 @@ export class Supervisor {
 
     // 3. Check if there is an active running generation from persisted state
     const active = this.generationManager.getActive(this.serviceName);
+    let activeHealthy = false;
     if (active && this.processManager.isAlive(active.pid)) {
-      if (publicPort) {
-        await this.router.listen(publicPort, '0.0.0.0', this.serviceName);
+      // Verify internal port is actually listening to prevent 502 Bad Gateway
+      activeHealthy = await this.readiness.checkTcp(active.internalPort, '127.0.0.1', 1000);
+      if (activeHealthy) {
+        if (publicPort) {
+          await this.router.listen(publicPort, '0.0.0.0', this.serviceName);
+        }
+        this.router.switchBackend(this.serviceName, active, publicPort);
       }
-      this.router.switchBackend(this.serviceName, active, publicPort);
-    } else {
+    }
+
+    if (!activeHealthy) {
+      if (active) {
+        process.stderr.write(
+          `[unitup supervisor] Persisted active generation #${active.id} (PID ${active.pid}) is not listening on internal port :${active.internalPort}. Deploying fresh instance...\n`
+        );
+        this.generationManager.remove(active, false);
+      }
       // Start initial generation
       await this.deploymentManager.deploy(this.serviceName, this.config, {
         publicPort,
@@ -216,7 +229,11 @@ export class Supervisor {
       await supervisor.start();
     } catch (err) {
       process.stderr.write(`[unitup supervisor] Failed to start: ${err.message}\n`);
-      process.exit(1);
+      const isUnrecoverableConfigError =
+        err.message?.includes('already occupied') ||
+        err.message?.includes('EADDRINUSE') ||
+        err.name === 'PortMismatchError';
+      process.exit(isUnrecoverableConfigError ? 78 : 1);
     }
   }
 }

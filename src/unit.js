@@ -107,6 +107,8 @@ export function generateUnitContent(opts) {
     '[Unit]',
     `Description=unitup service: ${safeName}`,
     'After=network.target',
+    'StartLimitIntervalSec=30s',
+    'StartLimitBurst=5',
     '',
     '[Service]',
     'Type=simple',
@@ -115,6 +117,7 @@ export function generateUnitContent(opts) {
     `ExecStart=${execStartLine}`,
     `Restart=${restartPolicy}`,
     'RestartSec=3',
+    'RestartPreventExitStatus=78',
     'StandardOutput=journal',
     'StandardError=journal',
     `LogLevelMax=${logLevelMax}`,
@@ -266,6 +269,8 @@ export function parseUnitContent(content) {
       }
     } else if (trimmed.startsWith('Restart=')) {
       result.restart = trimmed.slice(8).trim();
+    } else if (trimmed.startsWith('RestartPreventExitStatus=')) {
+      result.restartPreventExitStatus = trimmed.slice(25).trim();
     } else if (trimmed.startsWith('MemoryHigh=')) {
       result.memoryHigh = trimmed.slice(11).trim();
     } else if (trimmed.startsWith('MemoryMax=')) {

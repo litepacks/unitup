@@ -385,7 +385,11 @@ export class Router {
       cleanupInFlight();
       if (!res.headersSent) {
         res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end(`502 Bad Gateway: Error communicating with generation #${genId} (${err.message}).`);
+        const errorDetail =
+          err.code === 'ECONNREFUSED'
+            ? `Connection refused at 127.0.0.1:${backend.internalPort}. The application process may have crashed or not bound to process.env.PORT.`
+            : err.message;
+        res.end(`502 Bad Gateway: Error communicating with generation #${genId} (${errorDetail}).`);
       } else {
         res.destroy();
       }

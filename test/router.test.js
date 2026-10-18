@@ -90,12 +90,20 @@ describe('Router Architecture Boundary Suite', () => {
       });
     });
 
-    // Wait short delay for request to reach backend
-    await new Promise((r) => setTimeout(r, 50));
+    // Wait for request to reach backend
+    const startWait = Date.now();
+    while (
+      (router.getInFlightCount(10) < 1 || typeof completeRequest !== 'function') &&
+      Date.now() - startWait < 3000
+    ) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
     assert.strictEqual(router.getInFlightCount(10), 1);
 
     // Complete backend response
-    completeRequest();
+    if (typeof completeRequest === 'function') {
+      completeRequest();
+    }
     await reqPromise;
 
     // In-flight should decrement to 0

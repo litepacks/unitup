@@ -139,6 +139,9 @@ describe('unit.js', () => {
     assert.match(content, /\[Service\]/);
     assert.ok(content.includes(`WorkingDirectory=${cwd}`));
     assert.ok(content.includes('Restart=on-failure'));
+    assert.ok(content.includes('StartLimitIntervalSec=30s'));
+    assert.ok(content.includes('StartLimitBurst=5'));
+    assert.ok(content.includes('RestartPreventExitStatus=78'));
     assert.ok(content.includes('SyslogIdentifier=unitup-api'));
     assert.ok(content.includes('StandardOutput=journal'));
     assert.ok(content.includes('StandardError=journal'));
@@ -164,5 +167,11 @@ Restart=always
     assert.equal(parsed.cwd, '/home/user/app');
     assert.equal(parsed.script, '/home/user/app/server.js');
     assert.equal(parsed.restart, 'always');
+  });
+
+  test('parseUnitContent extracts RestartPreventExitStatus', () => {
+    const content = '[Service]\nRestartPreventExitStatus=78\n';
+    const parsed = parseUnitContent(content);
+    assert.equal(parsed.restartPreventExitStatus, '78');
   });
 });
