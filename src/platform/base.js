@@ -1,3 +1,4 @@
+import { ProcessManager, ensureProcessStopped } from '../core/process-manager.js';
 import { UnsupportedPlatformError } from '../errors.js';
 import { runCommand } from '../systemd.js';
 
@@ -10,6 +11,24 @@ export class ServiceAdapter {
    */
   constructor(options = {}) {
     this.options = options;
+    this._processManager = new ProcessManager({
+      defaultShutdownTimeout: options.shutdownTimeout ?? 5000
+    });
+  }
+
+  /**
+   * Waits for a PID to exit within the grace period and force kills if it remains alive.
+   *
+   * @param {number|string|null|undefined} rawPid
+   * @param {object} [options]
+   * @returns {Promise<boolean>}
+   */
+  async ensureProcessStopped(rawPid, options = {}) {
+    return ensureProcessStopped(rawPid, {
+      shutdownTimeout: this.options.shutdownTimeout ?? 5000,
+      ...options,
+      processManager: this._processManager
+    });
   }
 
   /**

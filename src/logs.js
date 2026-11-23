@@ -2,18 +2,49 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 
 /**
+ * Truncates one or more log files in-place to 0 bytes (safe for open file descriptors).
+ *
+ * @param {string|string[]} filePaths
+ * @returns {string[]} Paths that were truncated
+ */
+export function truncateServiceLogs(filePaths) {
+  const candidates = (Array.isArray(filePaths) ? filePaths : [filePaths]).filter(Boolean);
+  const truncated = [];
+  for (const filePath of candidates) {
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.truncateSync(filePath, 0);
+        truncated.push(filePath);
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return truncated;
+}
+
+/**
  * Reads lines from one or more log files with tailing, filtering, and follow support.
  *
  * @param {string|string[]} filePaths
  * @param {object} [options]
  * @param {number} [options.lines=100]
  * @param {boolean} [options.follow=false]
+ * @param {boolean} [options.truncate=false]
  * @param {string} [options.grep]
  * @param {string} [options.since]
  * @param {boolean} [options.json=false]
  * @returns {Promise<string|EventEmitter>}
  */
 export async function readServiceLogs(filePaths, options = {}) {
+  if (options.truncate) {
+    const truncated = truncateServiceLogs(filePaths);
+    if (truncated.length === 0) {
+      return 'No log files to truncate.';
+    }
+    return `Truncated ${truncated.length} log file(s).`;
+  }
+
   const allCandidatePaths = (Array.isArray(filePaths) ? filePaths : [filePaths]).filter(Boolean);
   const existingPaths = allCandidatePaths.filter((p) => fs.existsSync(p));
   existingPaths.sort((a, b) => {

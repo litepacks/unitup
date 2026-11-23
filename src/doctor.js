@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { findRuntimeExecutable } from './runtimes/common.js';
 import {
   checkNodeDiagnostics,
@@ -31,12 +32,56 @@ export async function getDoctorInfo() {
 
   // macOS specific checks
   let launchctlAvailable = false;
+  let launchAgentsDirWritable = false;
+  let launchdDomainAccessible = false;
+  const orphanedLaunchdJobs = [];
   if (platform === 'darwin') {
     try {
       const res = await runCommand('launchctl', ['version']);
       launchctlAvailable = res.code === 0 || (res.stdout && res.stdout.length > 0) || !res.stderr.includes('not found');
     } catch {
       launchctlAvailable = false;
+    }
+
+    const launchAgentsDir = path.join(os.homedir(), 'Library', 'LaunchAgents');
+    try {
+      if (fs.existsSync(launchAgentsDir)) {
+        fs.accessSync(launchAgentsDir, fs.constants.W_OK);
+        launchAgentsDirWritable = true;
+      } else {
+        // Check if parent ~/Library is writable so LaunchAgents can be created
+        fs.accessSync(path.dirname(launchAgentsDir), fs.constants.W_OK);
+        launchAgentsDirWritable = true;
+      }
+    } catch {
+      launchAgentsDirWritable = false;
+    }
+
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 501;
+    try {
+      const domRes = await runCommand('launchctl', ['print', `gui/${uid}`]);
+      launchdDomainAccessible = domRes.code === 0;
+    } catch {
+      launchdDomainAccessible = false;
+    }
+
+    try {
+      const listRes = await runCommand('launchctl', ['list']);
+      if (listRes.code === 0 && listRes.stdout) {
+        const lines = listRes.stdout.split('\n');
+        for (const line of lines) {
+          const match = line.match(/\b(dev\.unitup\.[a-zA-Z0-9._-]+)\b/);
+          if (match) {
+            const label = match[1];
+            const plistPath = path.join(launchAgentsDir, `${label}.plist`);
+            if (!fs.existsSync(plistPath)) {
+              orphanedLaunchdJobs.push(label);
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore
     }
   }
 
@@ -102,6 +147,9 @@ export async function getDoctorInfo() {
     systemdRunning: pid1,
     userSystemdAvailable: userSystemd,
     launchctlAvailable,
+    launchAgentsDirWritable,
+    launchdDomainAccessible,
+    orphanedLaunchdJobs,
     windowsScmAvailable,
     isAdmin,
     cgroupV2,
@@ -158,7 +206,19 @@ export async function runDoctor() {
     console.log(`Node: ${info.nodePath} ${info.nodeVersion ? `(${info.nodeVersion})` : ''}`);
     console.log(`Unitup data: ${info.unitupDataDir}`);
     console.log('! Non-Linux OS detected (macOS uses launchd)');
-    console.log('✓ launchctl: available');
+    console.log(
+      `${info.launchctlAvailable ? '✓' : '✗'} launchctl: ${info.launchctlAvailable ? 'available' : 'unavailable'}`
+    );
+    console.log(
+      `${info.launchAgentsDirWritable ? '✓' : '✗'} LaunchAgents directory: ${info.launchAgentsDirWritable ? 'writable' : 'not writable'}`
+    );
+    console.log(
+      `${info.launchdDomainAccessible ? '✓' : '!'} launchd GUI domain: ${info.launchdDomainAccessible ? 'accessible' : 'unavailable (headless/SSH session)'}`
+    );
+    if (info.orphanedLaunchdJobs && info.orphanedLaunchdJobs.length > 0) {
+      console.log(`! Orphaned launchd jobs detected (missing plist): ${info.orphanedLaunchdJobs.join(', ')}`);
+      console.log('  Clean up with: unitup remove <name> --force');
+    }
     console.log('✓ Permissions: user services supported');
   } else if (info.platform === 'win32') {
     console.log('Platform: Windows');

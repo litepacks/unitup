@@ -54,6 +54,8 @@ export class LinuxAdapter extends ServiceAdapter {
       cwd: config.cwd,
       env: config.env,
       envFile: config.envFile,
+      system: !!config.system,
+      shutdownTimeout: config.shutdownTimeout,
       restart: config.restart?.policy || 'on-failure',
       memoryHigh: config.resources?.memoryHigh,
       memoryMax: config.resources?.memoryMax,
@@ -71,6 +73,8 @@ export class LinuxAdapter extends ServiceAdapter {
       cwd: config.cwd,
       env: config.env,
       envFile: config.envFile,
+      system: !!(options.system || config.system),
+      shutdownTimeout: options.shutdownTimeout ?? config.shutdownTimeout,
       restart: config.restart?.policy || 'on-failure',
       memoryHigh: config.resources?.memoryHigh,
       memoryMax: config.resources?.memoryMax,
@@ -84,21 +88,22 @@ export class LinuxAdapter extends ServiceAdapter {
   }
 
   async start(name, options = {}) {
-    return startService(name, options.enable || false);
+    return startService(name, options.enable || false, options);
   }
 
   async stop(name, options = {}) {
-    return stopService(name);
+    return stopService(name, options);
   }
 
   async restart(name, options = {}) {
-    return restartService(name);
+    return restartService(name, options);
   }
 
   async enable(name, options = {}) {
     const safeName = sanitizeServiceName(name);
     const unitFilename = getUnitFilename(safeName);
-    const res = await this.run('systemctl', ['--user', 'enable', unitFilename]);
+    const prefix = options.system ? [] : ['--user'];
+    const res = await this.run('systemctl', [...prefix, 'enable', unitFilename]);
     if (res.code !== 0) {
       throw new Error(`Failed to enable service "${safeName}": ${res.stderr || res.stdout}`);
     }
@@ -108,7 +113,8 @@ export class LinuxAdapter extends ServiceAdapter {
   async disable(name, options = {}) {
     const safeName = sanitizeServiceName(name);
     const unitFilename = getUnitFilename(safeName);
-    const res = await this.run('systemctl', ['--user', 'disable', unitFilename]);
+    const prefix = options.system ? [] : ['--user'];
+    const res = await this.run('systemctl', [...prefix, 'disable', unitFilename]);
     if (res.code !== 0) {
       throw new Error(`Failed to disable service "${safeName}": ${res.stderr || res.stdout}`);
     }
@@ -116,7 +122,7 @@ export class LinuxAdapter extends ServiceAdapter {
   }
 
   async status(name, options = {}) {
-    const statusObj = await getServiceStatus(name);
+    const statusObj = await getServiceStatus(name, options);
     return {
       ...statusObj,
       installed: true,
@@ -146,7 +152,7 @@ export class LinuxAdapter extends ServiceAdapter {
 
   isInstalled(name, options = {}) {
     const safeName = sanitizeServiceName(name);
-    return unitFileExists(safeName);
+    return unitFileExists(safeName, !!options.system);
   }
 
   async failures(options = {}) {

@@ -33,24 +33,39 @@ export function getUserUnitDir() {
 }
 
 /**
+ * Returns the systemd unit directory for user or system scope.
+ *
+ * @param {boolean} [system=false]
+ * @returns {string}
+ */
+export function getUnitDir(system = false) {
+  if (system) {
+    return '/etc/systemd/system';
+  }
+  return getUserUnitDir();
+}
+
+/**
  * Returns the full file path for a given service unit.
  *
  * @param {string} name
+ * @param {boolean} [system=false]
  * @returns {string}
  */
-export function getUnitPath(name) {
+export function getUnitPath(name, system = false) {
   const filename = getUnitFilename(name);
-  return path.join(getUserUnitDir(), filename);
+  return path.join(getUnitDir(system), filename);
 }
 
 /**
  * Checks if a unit file exists for the given service name.
  *
  * @param {string} name
+ * @param {boolean} [system=false]
  * @returns {boolean}
  */
-export function unitFileExists(name) {
-  const unitPath = getUnitPath(name);
+export function unitFileExists(name, system = false) {
+  const unitPath = getUnitPath(name, system);
   return fs.existsSync(unitPath);
 }
 
@@ -118,6 +133,10 @@ export function generateUnitContent(opts) {
     `Restart=${restartPolicy}`,
     'RestartSec=3',
     'RestartPreventExitStatus=78',
+    'KillMode=control-group',
+    ...(typeof opts.shutdownTimeout === 'number' && opts.shutdownTimeout > 0
+      ? [`TimeoutStopSec=${Math.max(1, Math.ceil(opts.shutdownTimeout / 1000))}`]
+      : []),
     'StandardOutput=journal',
     'StandardError=journal',
     `LogLevelMax=${logLevelMax}`,
@@ -151,7 +170,8 @@ export function generateUnitContent(opts) {
     serviceLines.push(`Environment=${formatSystemdEnv(key, val)}`);
   }
 
-  serviceLines.push('', '[Install]', 'WantedBy=default.target', '');
+  const wantedBy = opts.system ? 'multi-user.target' : 'default.target';
+  serviceLines.push('', '[Install]', `WantedBy=${wantedBy}`, '');
 
   return serviceLines.join('\n');
 }
@@ -164,14 +184,15 @@ export function generateUnitContent(opts) {
  */
 export function writeUnitFile(opts) {
   const safeName = sanitizeServiceName(opts.name);
-  const unitDir = getUserUnitDir();
+  const system = !!opts.system;
+  const unitDir = getUnitDir(system);
 
   if (!fs.existsSync(unitDir)) {
     fs.mkdirSync(unitDir, { recursive: true });
   }
 
-  const unitPath = getUnitPath(safeName);
-  const content = generateUnitContent({ ...opts, name: safeName });
+  const unitPath = getUnitPath(safeName, system);
+  const content = generateUnitContent({ ...opts, name: safeName, system });
 
   fs.writeFileSync(unitPath, content, 'utf8');
   saveAppMetadata({
@@ -185,6 +206,8 @@ export function writeUnitFile(opts) {
     node: opts.nodePath,
     port: opts.port,
     deploy: opts.deploy,
+    shutdownTimeout: opts.shutdownTimeout,
+    system,
     memoryHigh: opts.memoryHigh || opts.resources?.memoryHigh,
     memoryMax: opts.memoryMax || opts.resources?.memoryMax,
     memorySwapMax: opts.memorySwapMax || opts.resources?.memorySwapMax,
@@ -198,12 +221,13 @@ export function writeUnitFile(opts) {
  * Removes a unit file from disk.
  *
  * @param {string} name
+ * @param {boolean} [system=false]
  * @returns {boolean} True if file existed and was removed
  */
-export function deleteUnitFile(name) {
+export function deleteUnitFile(name, system = false) {
   const safeName = sanitizeServiceName(name);
   deleteAppMetadata(safeName);
-  const unitPath = getUnitPath(safeName);
+  const unitPath = getUnitPath(safeName, system);
   if (fs.existsSync(unitPath)) {
     fs.unlinkSync(unitPath);
     return true;

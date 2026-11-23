@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parsePid } from '../core/process-manager.js';
 import {
   PermissionRequiredError,
   ServiceAlreadyExistsError,
@@ -107,6 +108,15 @@ export class WindowsAdapter extends ServiceAdapter {
     const generated = this.generateService(config);
 
     const isExisting = await this.isInstalled(safeName);
+    const existingMeta = readAppMetadata(safeName) || {};
+    const shutdownTimeout =
+      typeof options.shutdownTimeout === 'number' && options.shutdownTimeout >= 0
+        ? options.shutdownTimeout
+        : typeof config.shutdownTimeout === 'number' && config.shutdownTimeout >= 0
+          ? config.shutdownTimeout
+          : typeof existingMeta.shutdownTimeout === 'number'
+            ? existingMeta.shutdownTimeout
+            : (this.options.shutdownTimeout ?? 5000);
     let wasRunning = false;
 
     if (isExisting) {
@@ -116,9 +126,9 @@ export class WindowsAdapter extends ServiceAdapter {
         if (!options.force && !config.raw?.force) {
           throw new ServiceAlreadyExistsError(safeName);
         }
-        await this.stop(safeName);
+        await this.stop(safeName, { shutdownTimeout });
       }
-      await this.uninstall(safeName, { force: true });
+      await this.uninstall(safeName, { force: true, shutdownTimeout });
     }
 
     // Save app metadata before creating service
@@ -178,9 +188,16 @@ export class WindowsAdapter extends ServiceAdapter {
   async uninstall(name, options = {}) {
     const safeName = sanitizeServiceName(name);
     const serviceName = this.getServiceName(safeName);
+    const meta = readAppMetadata(safeName) || {};
+    const shutdownTimeout =
+      typeof options.shutdownTimeout === 'number' && options.shutdownTimeout >= 0
+        ? options.shutdownTimeout
+        : typeof meta.shutdownTimeout === 'number'
+          ? meta.shutdownTimeout
+          : (this.options.shutdownTimeout ?? 5000);
 
     const isExisting = await this.isInstalled(safeName);
-    if (!isExisting) {
+    if (!isExisting && !options.force) {
       throw new ServiceNotFoundError(safeName);
     }
 
@@ -193,9 +210,11 @@ export class WindowsAdapter extends ServiceAdapter {
       );
     }
 
-    if (currentStatus.state === 'running') {
+    const oldPid = parsePid(currentStatus.pid) || parsePid(meta.pid);
+
+    if (currentStatus.state === 'running' || (options.force && oldPid)) {
       try {
-        await this.stop(safeName);
+        await this.stop(safeName, { ...options, shutdownTimeout });
       } catch {
         // ignore
       }
@@ -209,7 +228,17 @@ export class WindowsAdapter extends ServiceAdapter {
           'uninstall'
         );
       }
-      throw new Error(`Failed to delete Windows service "${serviceName}": ${res.stderr || res.stdout}`);
+      if (!options.force) {
+        throw new Error(`Failed to delete Windows service "${serviceName}": ${res.stderr || res.stdout}`);
+      }
+    }
+
+    // Final guarantee that any tracked process is completely gone
+    if (oldPid) {
+      await this.ensureProcessStopped(oldPid, {
+        shutdownTimeout,
+        sendTerm: true
+      });
     }
 
     deleteAppMetadata(safeName);
@@ -250,17 +279,42 @@ export class WindowsAdapter extends ServiceAdapter {
   async stop(name, options = {}) {
     const safeName = sanitizeServiceName(name);
     const serviceName = this.getServiceName(safeName);
+    const meta = readAppMetadata(safeName) || {};
+    const shutdownTimeout =
+      typeof options.shutdownTimeout === 'number' && options.shutdownTimeout >= 0
+        ? options.shutdownTimeout
+        : typeof meta.shutdownTimeout === 'number'
+          ? meta.shutdownTimeout
+          : (this.options.shutdownTimeout ?? 5000);
+    const oldPid = parsePid(meta.pid);
 
     const res = await this.run('sc.exe', ['stop', serviceName]);
+    let signaled = res.code === 0;
     if (res.code !== 0) {
       if (res.stdout.includes('not started') || res.stdout.includes('1062')) {
-        return true;
-      }
-      if (res.stderr.includes('Access is denied') || res.stdout.includes('Access is denied')) {
+        signaled = false;
+      } else if (res.stderr.includes('Access is denied') || res.stdout.includes('Access is denied')) {
         throw new PermissionRequiredError('Stopping a Windows service requires Administrator privileges.', 'stop');
+      } else if (!options.force) {
+        throw new ServiceStopError(safeName, res.stderr || res.stdout);
       }
-      throw new ServiceStopError(safeName, res.stderr || res.stdout);
     }
+
+    if (oldPid) {
+      await this.ensureProcessStopped(oldPid, {
+        shutdownTimeout,
+        sendTerm: !signaled,
+        expectedCommand: meta.command
+      });
+    }
+
+    if (meta.pid) {
+      const { pid: _removedPid, ...restMeta } = meta;
+      if (restMeta.name) {
+        saveAppMetadata(restMeta);
+      }
+    }
+
     return true;
   }
 

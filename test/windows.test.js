@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import { WindowsServiceHost } from '../src/platform/windows-host.js';
 import { WindowsAdapter } from '../src/platform/windows.js';
 import { normalizeServiceConfig } from '../src/service/normalize.js';
 import { resetCommandRunner, setCommandRunner } from '../src/systemd.js';
+import { saveAppMetadata } from '../src/utils.js';
 
 describe('Windows Service Adapter Suite', () => {
   let tmpDir;
@@ -184,5 +186,50 @@ describe('Windows Service Adapter Suite', () => {
 
     const logContent = fs.readFileSync(stdoutLog, 'utf8');
     assert.ok(logContent.includes('[unitup host]'));
+  });
+
+  test('stop and uninstall({ force: true }) ensure lingering process PID is terminated', async () => {
+    const child = await new Promise((resolve, reject) => {
+      const c = spawn(
+        process.execPath,
+        ['-e', 'process.on("SIGTERM", () => {}); console.log("READY"); setInterval(() => {}, 1000);'],
+        { stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+      const timer = setTimeout(() => reject(new Error('Helper did not start')), 3000);
+      c.stdout.on('data', (chunk) => {
+        if (chunk.toString().includes('READY')) {
+          clearTimeout(timer);
+          resolve(c);
+        }
+      });
+    });
+
+    try {
+      saveAppMetadata({
+        name: 'win-orphan-svc',
+        command: process.execPath,
+        args: ['-e', ''],
+        cwd: tmpDir,
+        pid: String(child.pid)
+      });
+
+      setCommandRunner(async () => ({ code: 0, stdout: 'SUCCESS', stderr: '' }));
+
+      await adapter.stop('win-orphan-svc', { shutdownTimeout: 250 });
+
+      let alive = true;
+      try {
+        process.kill(child.pid, 0);
+      } catch (err) {
+        alive = err.code === 'EPERM';
+      }
+      assert.equal(alive, false, 'Lingering PID must be force killed after Windows stop()');
+    } finally {
+      try {
+        process.kill(child.pid, 'SIGKILL');
+      } catch {
+        // already dead
+      }
+    }
   });
 });

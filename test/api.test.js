@@ -82,22 +82,27 @@ describe('Programmatic API with Mocked Systemctl', () => {
     executedCommands = [];
 
     await startService('my-service');
-    assert.deepEqual(executedCommands[0], {
-      cmd: 'systemctl',
-      args: ['--user', 'start', 'unitup-my-service.service']
-    });
+    assert.ok(
+      executedCommands.some(
+        (c) => c.cmd === 'systemctl' && c.args.join(' ') === '--user start unitup-my-service.service'
+      )
+    );
 
+    executedCommands = [];
     await stopService('my-service');
-    assert.deepEqual(executedCommands[1], {
-      cmd: 'systemctl',
-      args: ['--user', 'stop', 'unitup-my-service.service']
-    });
+    assert.ok(
+      executedCommands.some(
+        (c) => c.cmd === 'systemctl' && c.args.join(' ') === '--user stop unitup-my-service.service'
+      )
+    );
 
+    executedCommands = [];
     await restartService('my-service');
-    assert.deepEqual(executedCommands[2], {
-      cmd: 'systemctl',
-      args: ['--user', 'restart', 'unitup-my-service.service']
-    });
+    assert.ok(
+      executedCommands.some(
+        (c) => c.cmd === 'systemctl' && c.args.join(' ') === '--user restart unitup-my-service.service'
+      )
+    );
   });
 
   test('getServiceStatus returns formatted status object', async () => {

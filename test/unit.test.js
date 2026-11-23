@@ -174,4 +174,42 @@ Restart=always
     const parsed = parseUnitContent(content);
     assert.equal(parsed.restartPreventExitStatus, '78');
   });
+
+  test('generateUnitContent includes KillMode=control-group, TimeoutStopSec, and multi-user.target for system scope', () => {
+    const content = generateUnitContent({
+      name: 'sys-api',
+      script: path.resolve('/opt/app/server.js'),
+      cwd: path.resolve('/opt/app'),
+      shutdownTimeout: 6500,
+      system: true
+    });
+
+    assert.ok(content.includes('KillMode=control-group'));
+    assert.ok(content.includes('TimeoutStopSec=7'));
+    assert.ok(content.includes('WantedBy=multi-user.target'));
+  });
+
+  test('LinuxAdapter enforces root permission for --system services', async () => {
+    const { LinuxAdapter } = await import('../src/platform/linux.js');
+    const { PermissionRequiredError } = await import('../src/errors.js');
+    const { getUnitDir } = await import('../src/unit.js');
+
+    assert.equal(getUnitDir(true), '/etc/systemd/system');
+
+    const adapter = new LinuxAdapter();
+    const origGetUid = process.getuid;
+    process.getuid = () => 1000;
+    try {
+      await assert.rejects(
+        async () =>
+          adapter.install(
+            { name: 'root-only', command: process.execPath, args: ['-v'], cwd: process.cwd(), system: true },
+            { system: true }
+          ),
+        PermissionRequiredError
+      );
+    } finally {
+      process.getuid = origGetUid;
+    }
+  });
 });

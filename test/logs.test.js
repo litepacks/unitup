@@ -56,4 +56,16 @@ describe('Cross-Platform Logs Reader Suite', () => {
     assert.equal(parsed.length, 2);
     assert.equal(parsed[0].message, 'Hello');
   });
+
+  test('truncates log files in-place when truncate: true', async () => {
+    const stdout = path.join(tmpDir, 'app.log');
+    const stderr = path.join(tmpDir, 'app-error.log');
+    fs.writeFileSync(stdout, 'big log output\n');
+    fs.writeFileSync(stderr, 'big error output\n');
+
+    const msg = await readServiceLogs([stdout, stderr], { truncate: true });
+    assert.match(msg, /Truncated 2 log file/);
+    assert.equal(fs.statSync(stdout).size, 0);
+    assert.equal(fs.statSync(stderr).size, 0);
+  });
 });

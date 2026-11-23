@@ -80,4 +80,19 @@ describe('cli.js argument parser', () => {
     const res = parseArgs(['doctor']);
     assert.equal(res.command, 'doctor');
   });
+
+  test('parses --shutdown-timeout and --truncate flags', () => {
+    const res1 = parseArgs(['stop', 'api', '--force', '--shutdown-timeout', '3000']);
+    assert.equal(res1.command, 'stop');
+    assert.equal(res1.flags.force, true);
+    assert.equal(res1.flags.shutdownTimeout, 3000);
+
+    const res2 = parseArgs(['remove', 'api', '--shutdown-timeout=1500', '-f']);
+    assert.equal(res2.flags.shutdownTimeout, 1500);
+    assert.equal(res2.flags.force, true);
+
+    const res3 = parseArgs(['logs', 'api', '--truncate']);
+    assert.equal(res3.command, 'logs');
+    assert.equal(res3.flags.truncate, true);
+  });
 });

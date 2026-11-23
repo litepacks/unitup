@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { parsePid } from '../core/process-manager.js';
 import {
   PermissionRequiredError,
   ServiceAlreadyExistsError,
@@ -167,6 +168,86 @@ export class MacOSAdapter extends ServiceAdapter {
   }
 
   /**
+   * Resolves the graceful shutdown timeout in ms.
+   *
+   * @param {object} [options]
+   * @param {object} [configOrMeta]
+   * @returns {number}
+   */
+  _resolveShutdownTimeout(options = {}, configOrMeta = {}) {
+    if (typeof options.shutdownTimeout === 'number' && options.shutdownTimeout >= 0) {
+      return options.shutdownTimeout;
+    }
+    if (typeof configOrMeta?.shutdownTimeout === 'number' && configOrMeta.shutdownTimeout >= 0) {
+      return configOrMeta.shutdownTimeout;
+    }
+    return this.options.shutdownTimeout ?? 5000;
+  }
+
+  /**
+   * Queries launchd for live job state and PID even if the plist file is absent on disk.
+   *
+   * @param {string} label
+   * @param {string} domain
+   * @returns {Promise<{ loaded: boolean, state: string, pid: string, lastExitCode: string|null, raw: string }>}
+   */
+  async _queryLaunchd(label, domain) {
+    let loaded = false;
+    let state = 'stopped';
+    let pid = '-';
+    let lastExitCode = null;
+    let raw = '';
+
+    // 1. Try launchctl print
+    const printRes = await this.run('launchctl', ['print', `${domain}/${label}`]);
+    if (printRes.code === 0 && printRes.stdout) {
+      loaded = true;
+      raw = printRes.stdout;
+      const pidMatch = printRes.stdout.match(/pid\s*=\s*(\d+)/i);
+      if (pidMatch && pidMatch[1] && pidMatch[1] !== '0') {
+        pid = pidMatch[1];
+        state = 'running';
+      }
+
+      const stateMatch = printRes.stdout.match(/state\s*=\s*([a-zA-Z]+)/i);
+      if (stateMatch) {
+        const rawState = stateMatch[1].toLowerCase();
+        if (rawState === 'running') state = 'running';
+        else if (rawState === 'waiting') state = 'stopped';
+      }
+
+      const exitMatch = printRes.stdout.match(/last exit code\s*=\s*(\d+)/i);
+      if (exitMatch) {
+        lastExitCode = exitMatch[1];
+        if (lastExitCode !== '0' && state !== 'running') {
+          state = 'failed';
+        }
+      }
+    } else {
+      // 2. Fallback to launchctl list
+      const listRes = await this.run('launchctl', ['list', label]);
+      if (listRes.code === 0 && listRes.stdout) {
+        loaded = true;
+        raw = listRes.stdout;
+        const pidMatch = listRes.stdout.match(/"PID"\s*=\s*(\d+);/i);
+        if (pidMatch && pidMatch[1]) {
+          pid = pidMatch[1];
+          state = 'running';
+        }
+        const exitMatch = listRes.stdout.match(/"LastExitStatus"\s*=\s*(\d+);/i);
+        if (exitMatch) {
+          lastExitCode = exitMatch[1];
+          if (lastExitCode !== '0' && state !== 'running') {
+            state = 'failed';
+          }
+        }
+      }
+    }
+
+    return { loaded, state, pid, lastExitCode, raw };
+  }
+
+  /**
    * Generates .plist XML content for a service from normalized config.
    *
    * @param {object} config - NormalizedServiceConfig
@@ -192,6 +273,11 @@ export class MacOSAdapter extends ServiceAdapter {
       StandardOutPath: stdoutLog,
       StandardErrorPath: stderrLog
     };
+
+    // Graceful shutdown timeout synced with launchd ExitTimeOut (in seconds)
+    if (typeof config.shutdownTimeout === 'number' && config.shutdownTimeout > 0) {
+      dict.ExitTimeOut = Math.max(1, Math.ceil(config.shutdownTimeout / 1000));
+    }
 
     // Restart policy
     if (config.restart?.enabled !== false && config.restart?.policy !== 'no') {
@@ -260,27 +346,55 @@ ${dictToPlistXml(dict)}
     const label = this.getLabel(safeName);
     const domain = this.getDomain(system);
 
+    const force = !!(options.force || config.raw?.force);
     const exists = fs.existsSync(plistPath);
+    const existingMeta = readAppMetadata(safeName) || {};
+    const shutdownTimeout = this._resolveShutdownTimeout(
+      options,
+      config.shutdownTimeout !== undefined ? config : existingMeta
+    );
     let wasRunning = false;
 
-    if (exists) {
-      const currentStatus = await this.status(safeName, { system });
-      if (currentStatus.state === 'running') {
+    if (exists || force || existingMeta.pid) {
+      const currentLaunchd = await this._queryLaunchd(label, domain);
+      const oldPid = parsePid(currentLaunchd.pid) || parsePid(existingMeta.pid);
+
+      if (currentLaunchd.state === 'running') {
         wasRunning = true;
-        if (!options.force && !config.raw?.force) {
+        if (!force) {
           throw new ServiceAlreadyExistsError(safeName);
         }
-        await this.stop(safeName, { system });
       }
 
-      // Try bootout existing service before overwriting
-      try {
-        await this.run('launchctl', ['bootout', `${domain}/${label}`]);
-      } catch {
+      if (exists || currentLaunchd.loaded || oldPid) {
+        // Bootout first so launchd stops managing/respawning the old job and sends SIGTERM
+        let bootedOut = false;
         try {
-          await this.run('launchctl', ['unload', '-w', plistPath]);
+          const res = await this.run('launchctl', ['bootout', `${domain}/${label}`]);
+          if (res.code === 0) {
+            bootedOut = true;
+          }
         } catch {
-          // ignore
+          // fallback
+        }
+
+        if (!bootedOut && exists) {
+          try {
+            const res = await this.run('launchctl', ['unload', '-w', plistPath]);
+            if (res.code === 0) {
+              bootedOut = true;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // Guarantee the previous process has completely exited before writing/starting the new instance
+        if (oldPid) {
+          await this.ensureProcessStopped(oldPid, {
+            shutdownTimeout,
+            sendTerm: !bootedOut
+          });
         }
       }
     }
@@ -299,6 +413,7 @@ ${dictToPlistXml(dict)}
 
     // Bootstrap into launchd
     let bootstrapSuccess = false;
+    let loadSuccess = false;
     try {
       const res = await this.run('launchctl', ['bootstrap', domain, plistPath]);
       if (res.code === 0) {
@@ -310,14 +425,28 @@ ${dictToPlistXml(dict)}
 
     if (!bootstrapSuccess) {
       try {
-        await this.run('launchctl', ['load', '-w', plistPath]);
+        const res = await this.run('launchctl', ['load', '-w', plistPath]);
+        if (res.code === 0) {
+          loadSuccess = true;
+        }
       } catch {
         // ignore load errors if already registered
       }
     }
 
-    if (options.start || config.raw?.start || wasRunning) {
-      await this.start(safeName, { system });
+    const shouldStart = !!(options.start || config.raw?.start || wasRunning);
+    const runAtLoad = config.autostart !== false;
+
+    if (shouldStart) {
+      if ((bootstrapSuccess || loadSuccess) && runAtLoad) {
+        // RunAtLoad already triggers startup during bootstrap/load; only kickstart (without -k) if not already running
+        const postState = await this._queryLaunchd(label, domain);
+        if (postState.state !== 'running') {
+          await this.start(safeName, { system, kill: false });
+        }
+      } else {
+        await this.start(safeName, { system, kill: false });
+      }
     }
 
     return {
@@ -341,13 +470,17 @@ ${dictToPlistXml(dict)}
     const plistPath = this.getPlistPath(safeName, system);
     const label = this.getLabel(safeName);
     const domain = this.getDomain(system);
+    const plistExists = fs.existsSync(plistPath);
+    const meta = readAppMetadata(safeName) || {};
+    const shutdownTimeout = this._resolveShutdownTimeout(options, meta);
 
-    if (!fs.existsSync(plistPath)) {
+    if (!plistExists && !options.force) {
       throw new ServiceNotFoundError(safeName);
     }
 
-    const currentStatus = await this.status(safeName, { system });
-    if (currentStatus.state === 'running' && !options.force) {
+    // Query live launchd state even when plist is absent (for force/orphan cleanup)
+    const launchdState = await this._queryLaunchd(label, domain);
+    if (launchdState.state === 'running' && !options.force) {
       throw new Error(
         `Service "${safeName}" is currently running.\n` +
           `Use --force (-f) to remove running services, or stop it first:\n` +
@@ -355,15 +488,36 @@ ${dictToPlistXml(dict)}
       );
     }
 
-    // Stop and bootout
+    const oldPid = parsePid(launchdState.pid) || parsePid(meta.pid);
+
+    // Stop and bootout (attempt even if plist file is already deleted)
+    let bootedOut = false;
     try {
-      await this.run('launchctl', ['bootout', `${domain}/${label}`]);
+      const res = await this.run('launchctl', ['bootout', `${domain}/${label}`]);
+      if (res.code === 0) {
+        bootedOut = true;
+      }
     } catch {
+      // fallback
+    }
+
+    if (!bootedOut && plistExists) {
       try {
-        await this.run('launchctl', ['unload', '-w', plistPath]);
+        const res = await this.run('launchctl', ['unload', '-w', plistPath]);
+        if (res.code === 0) {
+          bootedOut = true;
+        }
       } catch {
         // ignore
       }
+    }
+
+    // Wait for the old process to exit; force kill with SIGKILL if it lingers
+    if (oldPid) {
+      await this.ensureProcessStopped(oldPid, {
+        shutdownTimeout,
+        sendTerm: !bootedOut
+      });
     }
 
     // Delete plist file
@@ -397,17 +551,31 @@ ${dictToPlistXml(dict)}
       throw new ServiceNotFoundError(safeName);
     }
 
-    // 1. Try kickstart
-    let res = await this.run('launchctl', ['kickstart', '-k', `${domain}/${label}`]);
+    const kickstartArgs =
+      options.kill === false ? ['kickstart', `${domain}/${label}`] : ['kickstart', '-k', `${domain}/${label}`];
+
+    // 1. Try kickstart (if already bootstrapped)
+    let res = await this.run('launchctl', kickstartArgs);
     if (res.code === 0) return true;
 
-    // 2. Fallback to start
+    // 2. Fallback: enable + bootstrap from plist (e.g. after stop() booted out the job)
+    try {
+      await this.run('launchctl', ['enable', `${domain}/${label}`]);
+    } catch {
+      // ignore
+    }
+    const bootRes = await this.run('launchctl', ['bootstrap', domain, plistPath]);
+    if (bootRes.code === 0) {
+      const postState = await this._queryLaunchd(label, domain);
+      if (postState.state === 'running') {
+        return true;
+      }
+      res = await this.run('launchctl', ['kickstart', `${domain}/${label}`]);
+      if (res.code === 0) return true;
+    }
+
+    // 3. Legacy fallback to launchctl start / load
     res = await this.run('launchctl', ['start', label]);
-    if (res.code === 0) return true;
-
-    // 3. Fallback: try bootstrap then kickstart
-    await this.run('launchctl', ['bootstrap', domain, plistPath]);
-    res = await this.run('launchctl', ['kickstart', '-k', `${domain}/${label}`]);
     if (res.code === 0) return true;
 
     throw new ServiceStartError(safeName, res.stderr || res.stdout);
@@ -415,6 +583,8 @@ ${dictToPlistXml(dict)}
 
   /**
    * Stops a service.
+   * Uses `launchctl bootout` first so KeepAlive cannot respawn the stopped process,
+   * then waits for the captured PID to exit (escalating to SIGKILL if needed).
    *
    * @param {string} name
    * @param {object} [options]
@@ -426,18 +596,56 @@ ${dictToPlistXml(dict)}
     const label = this.getLabel(safeName);
     const domain = this.getDomain(system);
     const plistPath = this.getPlistPath(safeName, system);
+    const plistExists = fs.existsSync(plistPath);
 
-    if (!fs.existsSync(plistPath)) {
+    if (!plistExists && !options.force) {
       throw new ServiceNotFoundError(safeName);
     }
 
-    // 1. Try kill SIGTERM
-    let res = await this.run('launchctl', ['kill', 'SIGTERM', `${domain}/${label}`]);
-    if (res.code === 0) return true;
+    const meta = readAppMetadata(safeName) || {};
+    const shutdownTimeout = this._resolveShutdownTimeout(options, meta);
 
-    // 2. Fallback to stop
-    res = await this.run('launchctl', ['stop', label]);
-    if (res.code === 0) return true;
+    // Capture active PID before unloading/signaling
+    const launchdState = await this._queryLaunchd(label, domain);
+    const livePid = parsePid(launchdState.pid);
+    const fallbackMetaPid = !livePid ? parsePid(meta.pid) : null;
+    const oldPid = livePid || fallbackMetaPid;
+
+    // 1. Prefer bootout so launchd unloads the job and KeepAlive cannot respawn it
+    let signaled = false;
+    let res = await this.run('launchctl', ['bootout', `${domain}/${label}`]);
+    if (res.code === 0) {
+      signaled = true;
+    } else {
+      // 2. Fallback to kill SIGTERM
+      res = await this.run('launchctl', ['kill', 'SIGTERM', `${domain}/${label}`]);
+      if (res.code === 0) {
+        signaled = true;
+      } else {
+        // 3. Fallback to legacy stop
+        res = await this.run('launchctl', ['stop', label]);
+        if (res.code === 0) {
+          signaled = true;
+        }
+      }
+    }
+
+    // Wait for process to actually exit within grace period; SIGKILL if still alive
+    if (oldPid) {
+      await this.ensureProcessStopped(oldPid, {
+        shutdownTimeout,
+        sendTerm: !signaled,
+        expectedCommand: fallbackMetaPid ? meta.command : undefined
+      });
+    }
+
+    // Clear stale PID from metadata so future runs cannot hit a recycled PID
+    if (meta.pid) {
+      const { pid: _removedPid, ...restMeta } = meta;
+      if (restMeta.name) {
+        saveAppMetadata(restMeta);
+      }
+    }
 
     return true;
   }
@@ -454,10 +662,23 @@ ${dictToPlistXml(dict)}
     const system = !!options.system;
     const label = this.getLabel(safeName);
     const domain = this.getDomain(system);
+    const meta = readAppMetadata(safeName) || {};
+    const shutdownTimeout = this._resolveShutdownTimeout(options, meta);
+
+    const launchdState = await this._queryLaunchd(label, domain);
+    const oldPid = parsePid(launchdState.pid) || parsePid(meta.pid);
 
     // Try kickstart with -k (kill existing and restart)
     const res = await this.run('launchctl', ['kickstart', '-k', `${domain}/${label}`]);
-    if (res.code === 0) return true;
+    if (res.code === 0) {
+      if (oldPid) {
+        await this.ensureProcessStopped(oldPid, {
+          shutdownTimeout,
+          sendTerm: false
+        });
+      }
+      return true;
+    }
 
     // Fallback: stop then start
     await this.stop(safeName, options);
@@ -520,51 +741,16 @@ ${dictToPlistXml(dict)}
     let lastExitCode = null;
     const details = {};
 
-    if (installed) {
-      // 1. Try launchctl print
-      const printRes = await this.run('launchctl', ['print', `${domain}/${label}`]);
-      if (printRes.code === 0 && printRes.stdout) {
-        details.raw = printRes.stdout;
-        const pidMatch = printRes.stdout.match(/pid\s*=\s*(\d+)/i);
-        if (pidMatch && pidMatch[1] && pidMatch[1] !== '0') {
-          pid = pidMatch[1];
-          state = 'running';
-        }
-
-        const stateMatch = printRes.stdout.match(/state\s*=\s*([a-zA-Z]+)/i);
-        if (stateMatch) {
-          const rawState = stateMatch[1].toLowerCase();
-          if (rawState === 'running') state = 'running';
-          else if (rawState === 'waiting') state = 'stopped';
-        }
-
-        const exitMatch = printRes.stdout.match(/last exit code\s*=\s*(\d+)/i);
-        if (exitMatch) {
-          lastExitCode = exitMatch[1];
-          if (lastExitCode !== '0' && state !== 'running') {
-            state = 'failed';
-          }
-        }
-      } else {
-        // 2. Fallback to launchctl list
-        const listRes = await this.run('launchctl', ['list', label]);
-        if (listRes.code === 0 && listRes.stdout) {
-          details.raw = listRes.stdout;
-          const pidMatch = listRes.stdout.match(/"PID"\s*=\s*(\d+);/i);
-          if (pidMatch && pidMatch[1]) {
-            pid = pidMatch[1];
-            state = 'running';
-          }
-          const exitMatch = listRes.stdout.match(/"LastExitStatus"\s*=\s*(\d+);/i);
-          if (exitMatch) {
-            lastExitCode = exitMatch[1];
-            if (lastExitCode !== '0' && state !== 'running') {
-              state = 'failed';
-            }
-          }
-        }
+    const launchdState = await this._queryLaunchd(label, domain);
+    if (installed || launchdState.loaded) {
+      state = launchdState.state;
+      pid = launchdState.pid;
+      lastExitCode = launchdState.lastExitCode;
+      if (launchdState.raw) {
+        details.raw = launchdState.raw;
       }
     }
+    const orphaned = !installed && (launchdState.loaded || state === 'running');
 
     const command = meta.command || process.execPath;
     const argsList = meta.args || (meta.script ? [meta.script] : []);
@@ -572,6 +758,7 @@ ${dictToPlistXml(dict)}
     return {
       name: safeName,
       installed,
+      orphaned,
       state,
       status: state, // for backward compatibility with table renderers
       enabled: installed,

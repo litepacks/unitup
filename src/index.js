@@ -33,7 +33,7 @@ import {
   UnitupError,
   UnsupportedPlatformError
 } from './errors.js';
-import { readServiceLogs } from './logs.js';
+import { readServiceLogs, truncateServiceLogs } from './logs.js';
 import {
   LinuxAdapter,
   MacOSAdapter,
@@ -88,6 +88,7 @@ import {
   generateScheduleServiceContent,
   generateTimerContent,
   getTimerPath,
+  getUnitDir,
   getUnitPath,
   getUserUnitDir,
   parseUnitContent,
@@ -190,6 +191,7 @@ export {
   normalizeServiceConfig,
   resolveExecutable,
   readServiceLogs,
+  truncateServiceLogs,
   // Error hierarchy
   UnitupError,
   UnsupportedPlatformError,
@@ -264,6 +266,7 @@ export {
   runDoctor,
   // Unit file & path helpers
   getUserUnitDir,
+  getUnitDir,
   getUnitPath,
   getTimerPath,
   unitFileExists,

@@ -118,7 +118,9 @@ export function parseArgs(argv) {
       ready: '',
       drain: '',
       canary: false,
-      weight: ''
+      weight: '',
+      shutdownTimeout: undefined,
+      truncate: false
     }
   };
 
@@ -137,6 +139,23 @@ export function parseArgs(argv) {
       i++;
     } else if (arg === '--system') {
       result.flags.system = true;
+      i++;
+    } else if (arg === '--shutdown-timeout') {
+      const rawTimeout = argv[i + 1] || '';
+      const parsed = Number(rawTimeout);
+      if (rawTimeout && !Number.isNaN(parsed) && parsed >= 0) {
+        result.flags.shutdownTimeout = parsed;
+      }
+      i += 2;
+    } else if (arg.startsWith('--shutdown-timeout=')) {
+      const rawTimeout = arg.slice(19);
+      const parsed = Number(rawTimeout);
+      if (rawTimeout && !Number.isNaN(parsed) && parsed >= 0) {
+        result.flags.shutdownTimeout = parsed;
+      }
+      i++;
+    } else if (arg === '--truncate') {
+      result.flags.truncate = true;
       i++;
     } else if (arg === '--runtime') {
       result.flags.runtime = argv[i + 1] || '';
@@ -664,6 +683,7 @@ export async function runCli(argv = process.argv.slice(2)) {
           memorySwapMax: memorySwapMaxFlag,
           defaultMemory: flags.defaultMemory,
           force: flags.force,
+          ...(flags.shutdownTimeout !== undefined ? { shutdownTimeout: flags.shutdownTimeout } : {}),
           port: flags.port ? Number(flags.port) : projectCfg?.port,
           deploy: {
             ...(projectCfg?.deploy || {}),
@@ -732,7 +752,11 @@ export async function runCli(argv = process.argv.slice(2)) {
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await defaultManager.stop(name, { system: flags.system });
+          await defaultManager.stop(name, {
+            system: flags.system,
+            force: flags.force,
+            ...(flags.shutdownTimeout !== undefined ? { shutdownTimeout: flags.shutdownTimeout } : {})
+          });
           console.log(`✓ Service "${sanitizeServiceName(name)}" stopped.`);
         }
         break;
@@ -747,7 +771,10 @@ export async function runCli(argv = process.argv.slice(2)) {
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await defaultManager.restart(name, { system: flags.system });
+          await defaultManager.restart(name, {
+            system: flags.system,
+            ...(flags.shutdownTimeout !== undefined ? { shutdownTimeout: flags.shutdownTimeout } : {})
+          });
           console.log(`✓ Service "${sanitizeServiceName(name)}" restarted.`);
         }
         break;
@@ -1157,6 +1184,7 @@ export async function runCli(argv = process.argv.slice(2)) {
             boot: flags.boot,
             json: flags.json,
             diskUsage: flags.diskUsage,
+            truncate: flags.truncate,
             system: flags.system
           });
           if (output && typeof output.on === 'function') {
@@ -1228,7 +1256,11 @@ export async function runCli(argv = process.argv.slice(2)) {
         }
         const targetNames = await resolveTargetNames(nameArg);
         for (const name of targetNames) {
-          await defaultManager.uninstall(name, { force: flags.force, system: flags.system });
+          await defaultManager.uninstall(name, {
+            force: flags.force,
+            system: flags.system,
+            ...(flags.shutdownTimeout !== undefined ? { shutdownTimeout: flags.shutdownTimeout } : {})
+          });
           console.log(`✓ Service "${sanitizeServiceName(name)}" removed.`);
         }
         break;

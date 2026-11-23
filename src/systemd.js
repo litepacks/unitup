@@ -2,6 +2,8 @@ import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { ensureProcessStopped, parsePid } from './core/process-manager.js';
+import { PermissionRequiredError } from './errors.js';
 import {
   deleteUnitFile,
   getUnitPath,
@@ -12,6 +14,7 @@ import {
   writeUnitFile
 } from './unit.js';
 import {
+  deleteAppMetadata,
   findProjectConfig,
   formatRelativeTime,
   getTimerFilename,
@@ -270,19 +273,35 @@ export async function checkUserLinger() {
 
 import { resolveRuntimeConfig } from './runtimes/index.js';
 
-export async function daemonReload() {
-  const res = await runCommand('systemctl', ['--user', 'daemon-reload']);
+function getSystemctlPrefix(system = false) {
+  return system ? [] : ['--user'];
+}
+
+function assertSystemRoot(system, action) {
+  if (system && typeof process.getuid === 'function' && process.getuid() !== 0) {
+    throw new PermissionRequiredError(
+      `Managing a system-level systemd service requires root privileges.\n\nTry:\n  sudo unitup ${action} --system`,
+      action
+    );
+  }
+}
+
+export async function daemonReload(system = false) {
+  const res = await runCommand('systemctl', [...getSystemctlPrefix(system), 'daemon-reload']);
   if (res.code !== 0) {
     throw new Error(`Failed to reload systemd daemon: ${res.stderr || res.stdout}`);
   }
   return true;
 }
 
-export async function resetFailed() {
-  await runCommand('systemctl', ['--user', 'reset-failed']);
+export async function resetFailed(system = false) {
+  await runCommand('systemctl', [...getSystemctlPrefix(system), 'reset-failed']);
 }
 
 export async function addService(opts) {
+  const system = !!opts.system;
+  assertSystemRoot(system, 'install-system');
+
   const targetCwd = opts.cwd ? path.resolve(process.cwd(), opts.cwd) : process.cwd();
   const configPath = opts.config ? path.resolve(targetCwd, opts.config) : findProjectConfig(targetCwd);
   const projectCfg = configPath ? readProjectConfig(configPath) : null;
@@ -309,11 +328,17 @@ export async function addService(opts) {
   }
 
   const safeName = sanitizeServiceName(mergedOpts.name);
+  const shutdownTimeout =
+    typeof mergedOpts.shutdownTimeout === 'number' && mergedOpts.shutdownTimeout >= 0
+      ? mergedOpts.shutdownTimeout
+      : 5000;
   let wasActive = false;
+  let oldPid = null;
 
-  if (unitFileExists(safeName)) {
+  if (unitFileExists(safeName, system)) {
     try {
-      const show = await getServiceShow(safeName);
+      const show = await getServiceShow(safeName, { system });
+      oldPid = parsePid(show.MainPID);
       if (show.ActiveState === 'active') {
         wasActive = true;
         if (!mergedOpts.force) {
@@ -331,48 +356,58 @@ export async function addService(opts) {
     }
   }
 
+  // Ensure the previous process has completely exited before overwriting and starting the new instance
+  if (wasActive && mergedOpts.force) {
+    await stopService(safeName, { shutdownTimeout, pid: oldPid, system });
+  }
+
   const runtimeConfig = await resolveRuntimeConfig({ ...mergedOpts, name: safeName });
 
   const { path: unitPath } = writeUnitFile({
     ...mergedOpts,
     name: safeName,
+    system,
     runtime: runtimeConfig.runtime,
     command: runtimeConfig.command,
     args: runtimeConfig.args,
     cwd: mergedOpts.cwd
   });
 
-  await daemonReload();
+  await daemonReload(system);
 
   if (wasActive && mergedOpts.force) {
-    await restartService(safeName);
+    await restartService(safeName, { shutdownTimeout, system });
   } else if (mergedOpts.start) {
-    await startService(safeName, true);
+    await startService(safeName, true, { system });
   }
 
   return { name: safeName, unitPath };
 }
 
-export async function startService(name, enable = false) {
+export async function startService(name, enable = false, opts = {}) {
+  const system = !!opts?.system;
+  assertSystemRoot(system, 'start');
+
   if (name && typeof name === 'string' && name.startsWith('@')) {
     const list = await getServicesByGroup(name);
     if (list.length === 0) {
       throw new Error(`No services found in group "${name}".`);
     }
     for (const s of list) {
-      await startService(s, enable);
+      await startService(s, enable, opts);
     }
     return true;
   }
 
   const safeName = sanitizeServiceName(name);
-  if (!unitFileExists(safeName)) {
+  if (!unitFileExists(safeName, system)) {
     throw new Error(`Service "${safeName}" does not exist.\nCreate it with: unitup add <script> --name ${safeName}`);
   }
 
+  const prefix = getSystemctlPrefix(system);
   const args = enable
-    ? ['--user', 'enable', '--now', getUnitFilename(safeName)]
-    : ['--user', 'start', getUnitFilename(safeName)];
+    ? [...prefix, 'enable', '--now', getUnitFilename(safeName)]
+    : [...prefix, 'start', getUnitFilename(safeName)];
 
   const res = await runCommand('systemctl', args);
   if (res.code !== 0) {
@@ -381,56 +416,119 @@ export async function startService(name, enable = false) {
   return true;
 }
 
-export async function stopService(name) {
+export async function stopService(name, opts = {}) {
+  const system = !!opts?.system;
+  assertSystemRoot(system, 'stop');
+
   if (name && typeof name === 'string' && name.startsWith('@')) {
     const list = await getServicesByGroup(name);
     if (list.length === 0) {
       throw new Error(`No services found in group "${name}".`);
     }
     for (const s of list) {
-      await stopService(s);
+      await stopService(s, opts);
     }
     return true;
   }
 
   const safeName = sanitizeServiceName(name);
-  if (!unitFileExists(safeName)) {
+  const force = !!opts?.force;
+  if (!unitFileExists(safeName, system) && !force) {
     throw new Error(`Service "${safeName}" does not exist.`);
   }
 
-  const res = await runCommand('systemctl', ['--user', 'stop', getUnitFilename(safeName)]);
-  if (res.code !== 0) {
+  const meta = readAppMetadata(safeName) || {};
+  const shutdownTimeout =
+    typeof opts?.shutdownTimeout === 'number' && opts.shutdownTimeout >= 0
+      ? opts.shutdownTimeout
+      : typeof meta.shutdownTimeout === 'number'
+        ? meta.shutdownTimeout
+        : 5000;
+
+  let livePid = parsePid(opts?.pid);
+  if (!livePid) {
+    try {
+      const show = await getServiceShow(safeName, { system });
+      livePid = parsePid(show.MainPID);
+    } catch {
+      // ignore
+    }
+  }
+  const fallbackMetaPid = !livePid ? parsePid(meta.pid) : null;
+  const oldPid = livePid || fallbackMetaPid;
+
+  const res = await runCommand('systemctl', [...getSystemctlPrefix(system), 'stop', getUnitFilename(safeName)]);
+  if (res.code !== 0 && !force) {
     throw new Error(`Failed to stop service "${safeName}": ${res.stderr || res.stdout}`);
   }
+
+  if (oldPid) {
+    await ensureProcessStopped(oldPid, {
+      shutdownTimeout,
+      sendTerm: res.code !== 0,
+      expectedCommand: fallbackMetaPid ? meta.command : undefined
+    });
+  }
+
   return true;
 }
 
-export async function restartService(name) {
+export async function restartService(name, opts = {}) {
+  const system = !!opts?.system;
+  assertSystemRoot(system, 'restart');
+
   if (name && typeof name === 'string' && name.startsWith('@')) {
     const list = await getServicesByGroup(name);
     if (list.length === 0) {
       throw new Error(`No services found in group "${name}".`);
     }
     for (const s of list) {
-      await restartService(s);
+      await restartService(s, opts);
     }
     return true;
   }
 
   const safeName = sanitizeServiceName(name);
-  if (!unitFileExists(safeName)) {
+  if (!unitFileExists(safeName, system)) {
     throw new Error(`Service "${safeName}" does not exist.`);
   }
 
-  const res = await runCommand('systemctl', ['--user', 'restart', getUnitFilename(safeName)]);
+  const meta = readAppMetadata(safeName) || {};
+  const shutdownTimeout =
+    typeof opts?.shutdownTimeout === 'number' && opts.shutdownTimeout >= 0
+      ? opts.shutdownTimeout
+      : typeof meta.shutdownTimeout === 'number'
+        ? meta.shutdownTimeout
+        : 5000;
+
+  let oldPid = null;
+  try {
+    const show = await getServiceShow(safeName, { system });
+    oldPid = parsePid(show.MainPID);
+  } catch {
+    // ignore
+  }
+
+  const res = await runCommand('systemctl', [...getSystemctlPrefix(system), 'restart', getUnitFilename(safeName)]);
   if (res.code !== 0) {
     throw new Error(`Failed to restart service "${safeName}": ${res.stderr || res.stdout}`);
   }
+
+  if (oldPid) {
+    await ensureProcessStopped(oldPid, {
+      shutdownTimeout,
+      sendTerm: false
+    });
+  }
+
   return true;
 }
 
 export async function removeService(name, opts = {}) {
   const force = typeof opts === 'boolean' ? opts : !!opts?.force;
+  const system = typeof opts === 'object' ? !!opts?.system : false;
+  const shutdownTimeoutOpt = typeof opts === 'object' ? opts?.shutdownTimeout : undefined;
+  assertSystemRoot(system, 'uninstall');
 
   if (name && typeof name === 'string' && name.startsWith('@')) {
     const list = await getServicesByGroup(name);
@@ -438,18 +536,29 @@ export async function removeService(name, opts = {}) {
       throw new Error(`No services found in group "${name}".`);
     }
     for (const s of list) {
-      await removeService(s, { force });
+      await removeService(s, typeof opts === 'object' ? { ...opts, force } : { force });
     }
     return true;
   }
 
   const safeName = sanitizeServiceName(name);
-  if (!unitFileExists(safeName)) {
+  const exists = unitFileExists(safeName, system);
+  if (!exists && !force) {
     throw new Error(`Service "${safeName}" does not exist.`);
   }
 
+  const meta = readAppMetadata(safeName) || {};
+  const shutdownTimeout =
+    typeof shutdownTimeoutOpt === 'number' && shutdownTimeoutOpt >= 0
+      ? shutdownTimeoutOpt
+      : typeof meta.shutdownTimeout === 'number'
+        ? meta.shutdownTimeout
+        : 5000;
+
+  let livePid = null;
   try {
-    const show = await getServiceShow(safeName);
+    const show = await getServiceShow(safeName, { system });
+    livePid = parsePid(show.MainPID);
     if (show.ActiveState === 'active') {
       if (!force) {
         throw new Error(
@@ -465,21 +574,41 @@ export async function removeService(name, opts = {}) {
     }
   }
 
+  const fallbackMetaPid = !livePid ? parsePid(meta.pid) : null;
+  const oldPid = livePid || fallbackMetaPid;
+
   // Attempt disable and stop
-  await runCommand('systemctl', ['--user', 'disable', '--now', getUnitFilename(safeName)]);
+  const disableRes = await runCommand('systemctl', [
+    ...getSystemctlPrefix(system),
+    'disable',
+    '--now',
+    getUnitFilename(safeName)
+  ]);
 
-  deleteUnitFile(safeName);
+  if (oldPid) {
+    await ensureProcessStopped(oldPid, {
+      shutdownTimeout,
+      sendTerm: disableRes.code !== 0,
+      expectedCommand: fallbackMetaPid ? meta.command : undefined
+    });
+  }
 
-  await daemonReload();
-  await resetFailed();
+  if (exists) {
+    deleteUnitFile(safeName, system);
+  }
+  deleteAppMetadata(safeName);
+
+  await daemonReload(system);
+  await resetFailed(system);
   return true;
 }
 
-export async function getServiceShow(name) {
+export async function getServiceShow(name, opts = {}) {
   const safeName = sanitizeServiceName(name);
   const unitFilename = getUnitFilename(safeName);
+  const system = !!opts?.system;
 
-  const res = await runCommand('systemctl', ['--user', 'show', unitFilename]);
+  const res = await runCommand('systemctl', [...getSystemctlPrefix(system), 'show', unitFilename]);
   const info = {};
 
   if (res.stdout) {
@@ -503,20 +632,21 @@ export async function getServiceStatusRaw(name) {
   return res.stdout || res.stderr;
 }
 
-export async function getServiceStatus(name) {
+export async function getServiceStatus(name, opts = {}) {
   const safeName = sanitizeServiceName(name);
-  if (!unitFileExists(safeName)) {
+  const system = !!opts?.system;
+  if (!unitFileExists(safeName, system)) {
     throw new Error(`Service "${safeName}" does not exist.`);
   }
 
-  const show = await getServiceShow(safeName);
+  const show = await getServiceShow(safeName, { system });
 
   // Read unit file content for script and working dir
   let script = 'unknown';
   let cwd = 'unknown';
   let parsed = {};
 
-  const unitPath = getUnitPath(safeName);
+  const unitPath = getUnitPath(safeName, system);
   try {
     const content = fs.readFileSync(unitPath, 'utf8');
     parsed = parseUnitContent(content);

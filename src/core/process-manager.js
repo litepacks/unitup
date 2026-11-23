@@ -3,6 +3,113 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
+ * Parses a valid positive integer PID from a number or numeric string.
+ *
+ * @param {number|string|null|undefined} value
+ * @returns {number|null}
+ */
+export function parsePid(value) {
+  if (typeof value === 'number' && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    const num = Number.parseInt(value.trim(), 10);
+    return num > 0 ? num : null;
+  }
+  return null;
+}
+
+/**
+ * Best-effort check on POSIX systems that a PID still belongs to the expected executable/command
+ * to guard against killing an unrelated process after OS PID reuse.
+ *
+ * @param {number} pid
+ * @param {string} expectedCommand
+ * @returns {Promise<boolean>} true if command matches or cannot be determined safely
+ */
+async function verifyPidCommand(pid, expectedCommand) {
+  if (!expectedCommand || typeof expectedCommand !== 'string' || process.platform === 'win32') {
+    return true;
+  }
+  const expectedBase = path.basename(expectedCommand).toLowerCase();
+  if (!expectedBase) return true;
+
+  return new Promise((resolve) => {
+    execFile('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', timeout: 1000 }, (err, stdout) => {
+      if (err || !stdout) {
+        // Process already exited or ps unavailable — allow normal liveness check to handle it
+        resolve(true);
+        return;
+      }
+      const cmdline = stdout.trim().toLowerCase();
+      if (!cmdline) {
+        resolve(true);
+        return;
+      }
+      resolve(cmdline.includes(expectedBase) || cmdline.includes(expectedCommand.toLowerCase()));
+    });
+  });
+}
+
+/**
+ * Waits for a process (by PID) to exit within the grace period; sends SIGKILL if still alive and verifies exit.
+ *
+ * @param {number|string|null|undefined} rawPid
+ * @param {object} [options]
+ * @param {number} [options.shutdownTimeout=5000]
+ * @param {number} [options.killTimeout=2000]
+ * @param {boolean} [options.sendTerm=false]
+ * @param {string} [options.signal='SIGTERM']
+ * @param {string} [options.expectedCommand]
+ * @param {ProcessManager} [options.processManager]
+ * @returns {Promise<boolean>}
+ */
+export async function ensureProcessStopped(rawPid, options = {}) {
+  const pid = parsePid(rawPid);
+  if (!pid) return true;
+
+  // Verify process exists and we have permission to signal it
+  try {
+    process.kill(pid, 0);
+  } catch (err) {
+    if (err.code === 'EPERM') {
+      return false;
+    }
+    return true;
+  }
+
+  // Guard against OS PID reuse when falling back to persisted metadata PID
+  if (options.expectedCommand) {
+    const matches = await verifyPidCommand(pid, options.expectedCommand);
+    if (!matches) {
+      return true;
+    }
+  }
+
+  const timeout =
+    typeof options.shutdownTimeout === 'number' && options.shutdownTimeout >= 0 ? options.shutdownTimeout : 5000;
+  const killTimeout = typeof options.killTimeout === 'number' && options.killTimeout >= 0 ? options.killTimeout : 2000;
+  const pm = options.processManager || new ProcessManager({ defaultShutdownTimeout: timeout });
+
+  if (options.sendTerm) {
+    pm.signal(pid, options.signal || 'SIGTERM');
+  }
+
+  if (timeout > 0) {
+    const exitResult = await pm.waitForExit(pid, timeout);
+    if (exitResult.exited) {
+      return true;
+    }
+  }
+
+  if (pm.isAlive(pid)) {
+    return pm.forceKill(pid, killTimeout);
+  }
+
+  return true;
+}
+
+/**
  * ProcessManager is responsible ONLY for low-level process lifecycle management.
  * It contains NO deployment sequencing, routing, or drain logic.
  */
@@ -253,15 +360,46 @@ export class ProcessManager {
     }
 
     // Process is external or untracked PID: poll liveness
+    const hasTimeout = typeof timeout === 'number' && timeout >= 0;
+    if (hasTimeout && timeout === 0) {
+      return { exited: !this.isAlive(pid) };
+    }
     const pollInterval = 50;
     const start = Date.now();
     while (this.isAlive(pid)) {
-      if (timeout && Date.now() - start >= timeout) {
+      if (hasTimeout && Date.now() - start >= timeout) {
         return { exited: false };
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
     return { exited: true };
+  }
+
+  /**
+   * Force kills a process with SIGKILL (and taskkill /T /F on Windows) and waits for exit.
+   *
+   * @param {number|object} processOrPid
+   * @param {number} [waitTimeout=2000]
+   * @returns {Promise<boolean>}
+   */
+  async forceKill(processOrPid, waitTimeout = 2000) {
+    const pid = typeof processOrPid === 'number' ? processOrPid : processOrPid?.pid;
+    if (!pid || !this.isAlive(pid)) return true;
+
+    if (process.platform === 'win32') {
+      try {
+        await new Promise((resolve) => {
+          execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => resolve());
+        });
+      } catch {
+        // ignore
+      }
+    }
+
+    this.signal(pid, 'SIGKILL');
+
+    const finalWait = await this.waitForExit(pid, waitTimeout);
+    return finalWait.exited;
   }
 
   /**
@@ -291,21 +429,7 @@ export class ProcessManager {
 
     // 3. Force kill if still alive
     if (this.isAlive(pid)) {
-      if (process.platform === 'win32') {
-        try {
-          await new Promise((resolve) => {
-            execFile('taskkill', ['/pid', String(pid), '/T', '/F'], () => resolve());
-          });
-        } catch {
-          // ignore
-        }
-      }
-
-      this.signal(pid, 'SIGKILL');
-
-      // Final short grace period for SIGKILL to take effect
-      const finalWait = await this.waitForExit(pid, 2000);
-      return finalWait.exited;
+      return this.forceKill(pid, 2000);
     }
 
     return true;

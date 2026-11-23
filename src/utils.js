@@ -182,6 +182,17 @@ export function saveAppMetadata(meta) {
     group: meta.group || 'default',
     ...(meta.port !== undefined ? { port: meta.port } : {}),
     ...(meta.deploy ? { deploy: meta.deploy } : {}),
+    ...(meta.pid !== undefined ? { pid: String(meta.pid) } : {}),
+    ...(meta.shutdownTimeout !== undefined ? { shutdownTimeout: meta.shutdownTimeout } : {}),
+    ...(meta.started !== undefined ? { started: meta.started } : {}),
+    ...(meta.restarts !== undefined ? { restarts: String(meta.restarts) } : {}),
+    ...(meta.system !== undefined ? { system: !!meta.system } : {}),
+    ...(meta.plistPath !== undefined ? { plistPath: meta.plistPath } : {}),
+    ...(meta.label !== undefined ? { label: meta.label } : {}),
+    ...(meta.logs !== undefined ? { logs: meta.logs } : {}),
+    ...(meta.serviceName !== undefined ? { serviceName: meta.serviceName } : {}),
+    ...(meta.hostPath !== undefined ? { hostPath: meta.hostPath } : {}),
+    ...(meta.installedAt !== undefined ? { installedAt: meta.installedAt } : {}),
     // Optional resources section
     ...(Object.keys(resources).length > 0 ? { resources } : {}),
     // Backward compatibility fields

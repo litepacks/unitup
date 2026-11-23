@@ -52,7 +52,8 @@ export class ServiceManager {
     return this.adapter.install(normalized, {
       force: !!rawOpts.force,
       start: !!rawOpts.start,
-      system: !!rawOpts.system
+      system: !!rawOpts.system,
+      ...(rawOpts.shutdownTimeout !== undefined ? { shutdownTimeout: rawOpts.shutdownTimeout } : {})
     });
   }
 

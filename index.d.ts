@@ -220,6 +220,7 @@ export interface PlatformCapabilities {
 export interface ServiceStatus {
   name: string;
   installed: boolean;
+  orphaned?: boolean;
   state: 'running' | 'stopped' | 'starting' | 'stopping' | 'failed' | 'scheduled' | 'unknown' | string;
   status: string;
   enabled: boolean | string;
@@ -256,6 +257,7 @@ export interface LogOptions {
   boot?: boolean;
   json?: boolean;
   diskUsage?: boolean;
+  truncate?: boolean;
   system?: boolean;
 }
 
@@ -408,10 +410,10 @@ export class ServiceManager {
   readonly capabilities: PlatformCapabilities;
   generate(rawOpts?: CreateServiceOptions): Promise<string | Record<string, unknown>>;
   install(rawOpts: CreateServiceOptions): Promise<{ name: string; unitPath?: string; serviceName?: string }>;
-  uninstall(name: string, options?: { force?: boolean; system?: boolean }): Promise<boolean>;
+  uninstall(name: string, options?: { force?: boolean; system?: boolean; shutdownTimeout?: number }): Promise<boolean>;
   start(name: string, options?: { enable?: boolean; system?: boolean }): Promise<boolean>;
-  stop(name: string, options?: { system?: boolean }): Promise<boolean>;
-  restart(name: string, options?: { system?: boolean }): Promise<boolean>;
+  stop(name: string, options?: { force?: boolean; system?: boolean; shutdownTimeout?: number }): Promise<boolean>;
+  restart(name: string, options?: { system?: boolean; shutdownTimeout?: number }): Promise<boolean>;
   enable(name: string, options?: { system?: boolean }): Promise<boolean>;
   disable(name: string, options?: { system?: boolean }): Promise<boolean>;
   status(name: string, options?: { system?: boolean }): Promise<ServiceStatus>;
@@ -426,10 +428,16 @@ export const defaultManager: ServiceManager;
 
 // Unified API functions
 export function install(options: CreateServiceOptions): Promise<{ name: string; unitPath?: string }>;
-export function uninstall(name: string, options?: { force?: boolean; system?: boolean }): Promise<boolean>;
+export function uninstall(
+  name: string,
+  options?: { force?: boolean; system?: boolean; shutdownTimeout?: number }
+): Promise<boolean>;
 export function start(name: string, options?: { enable?: boolean; system?: boolean }): Promise<boolean>;
-export function stop(name: string, options?: { system?: boolean }): Promise<boolean>;
-export function restart(name: string, options?: { system?: boolean }): Promise<boolean>;
+export function stop(
+  name: string,
+  options?: { force?: boolean; system?: boolean; shutdownTimeout?: number }
+): Promise<boolean>;
+export function restart(name: string, options?: { system?: boolean; shutdownTimeout?: number }): Promise<boolean>;
 export function status(name: string, options?: { system?: boolean }): Promise<ServiceStatus>;
 export function list(options?: { group?: string }): Promise<Array<Record<string, unknown>>>;
 export function inspect(name: string, options?: { system?: boolean }): Promise<Record<string, unknown>>;
@@ -443,15 +451,22 @@ export function getPlatformCapabilities(platform?: string): PlatformCapabilities
 export function normalizeServiceConfig(rawOpts?: Record<string, unknown>): Promise<NormalizedServiceConfig>;
 export function resolveExecutable(binaryName: string, opts?: { cwd?: string; pathEnv?: string }): string | null;
 export function readServiceLogs(filePaths: string | string[], options?: LogOptions): Promise<string | EventEmitter>;
+export function truncateServiceLogs(filePaths: string | string[]): string[];
 
 // Backward-compatible API
 export function createService(options: CreateServiceOptions): Promise<{ name: string; unitPath: string }>;
 export function addService(options: CreateServiceOptions): Promise<{ name: string; unitPath: string }>;
-export function startService(name: string, enable?: boolean): Promise<boolean>;
-export function stopService(name: string): Promise<boolean>;
-export function restartService(name: string): Promise<boolean>;
-export function removeService(name: string, options?: boolean | { force?: boolean }): Promise<boolean>;
-export function getServiceStatus(name: string): Promise<ServiceStatus>;
+export function startService(name: string, enable?: boolean, options?: { system?: boolean }): Promise<boolean>;
+export function stopService(
+  name: string,
+  options?: { force?: boolean; system?: boolean; shutdownTimeout?: number }
+): Promise<boolean>;
+export function restartService(name: string, options?: { system?: boolean; shutdownTimeout?: number }): Promise<boolean>;
+export function removeService(
+  name: string,
+  options?: boolean | { force?: boolean; system?: boolean; shutdownTimeout?: number }
+): Promise<boolean>;
+export function getServiceStatus(name: string, options?: { system?: boolean }): Promise<ServiceStatus>;
 export function getServiceStatusRaw(name: string): Promise<string>;
 export function listServices(filterOpts?: { group?: string }): Promise<ListServiceItem[]>;
 export function inspectService(name: string): Promise<Record<string, unknown>>;
@@ -524,8 +539,9 @@ export function runCommand(
 
 // Unit / Plist helpers
 export function getUserUnitDir(): string;
-export function getUnitPath(name: string): string;
-export function unitFileExists(name: string): boolean;
+export function getUnitDir(system?: boolean): string;
+export function getUnitPath(name: string, system?: boolean): string;
+export function unitFileExists(name: string, system?: boolean): boolean;
 export function parseUnitContent(content: string): Record<string, unknown>;
 export function getUnitFilename(name: string): string;
 export function getTimerFilename(name: string): string;
