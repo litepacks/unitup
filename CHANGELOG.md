@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-23
+
+### Fixed
+- **Orphan Process Elimination on Reinstall / Stop / Uninstall (macOS, Linux, Windows)**: `stop()`, `uninstall()`, and `install({ force: true })` now capture the active service PID before stopping, wait for graceful termination within `shutdownTimeout` (default `5000ms`), and escalate to `SIGKILL` (plus `taskkill /T /F` on Windows) if the process lingers.
+- **macOS `launchd` `KeepAlive` Respawn Loop on `stop()`**: `MacOSAdapter.stop()` now uses `launchctl bootout` first so `KeepAlive` cannot immediately respawn a stopped service, and `start()` cleanly re-bootstraps booted-out services.
+- **macOS `RunAtLoad: true` Double-Start Race**: `MacOSAdapter.install({ force: true, start: true })` guarantees the previous process has completely exited before bootstrapping the new plist and skips redundant `launchctl kickstart -k` calls when `RunAtLoad` has already started the service.
+- **Idempotent `--force` Uninstall & Orphan Cleanup**: `uninstall(name, { force: true })` and `removeService(name, { force: true })` now attempt service unload, orphan PID termination, and metadata cleanup even if the plist/unit file was already removed from disk.
+- **App Metadata Persistence**: `saveAppMetadata()` now preserves lifecycle and platform fields (`pid`, `shutdownTimeout`, `plistPath`, `label`, `system`, `logs`, `started`, `restarts`) and clears stale `pid` values on `stop()`.
+
+### Added
+- **Cross-Platform PID Reuse Guard**: Added `verifyPidCommand()` in `ensureProcessStopped()` (using `ps` on POSIX and `tasklist` on Windows) to prevent terminating an unrelated process if a persisted metadata PID was recycled by the OS.
+- **OS-Aligned Shutdown Timeouts & Process Group Cleanup**: Synced `shutdownTimeout` to `ExitTimeOut` in generated macOS `.plist` files and `TimeoutStopSec` + `KillMode=control-group` in generated Linux systemd unit files.
+- **Orphaned macOS Job Visibility**: `MacOSAdapter.status()` now queries `launchd` even when the plist file is absent on disk, reporting `installed: false, orphaned: true, state: 'running'`.
+- **Linux `--system` Service Support**: Added `/etc/systemd/system` unit path resolution (`getUnitDir(true)`), `WantedBy=multi-user.target`, system-scope `systemctl` commands, and root privilege verification (`PermissionRequiredError`).
+- **CLI & Diagnostics Enhancements**: Added `--shutdown-timeout <ms>`, `stop --force`, `logs --truncate` (`truncateServiceLogs()`), and macOS `unitup doctor` checks for `~/Library/LaunchAgents` writability, `gui/<uid>` domain access, and orphaned `dev.unitup.*` jobs.
+
 ## [0.4.1] - 2026-10-18
 
 ### Added

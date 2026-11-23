@@ -20,7 +20,7 @@ export function parsePid(value) {
 }
 
 /**
- * Best-effort check on POSIX systems that a PID still belongs to the expected executable/command
+ * Best-effort check that a PID still belongs to the expected executable/command
  * to guard against killing an unrelated process after OS PID reuse.
  *
  * @param {number} pid
@@ -28,11 +28,34 @@ export function parsePid(value) {
  * @returns {Promise<boolean>} true if command matches or cannot be determined safely
  */
 async function verifyPidCommand(pid, expectedCommand) {
-  if (!expectedCommand || typeof expectedCommand !== 'string' || process.platform === 'win32') {
+  if (!expectedCommand || typeof expectedCommand !== 'string') {
     return true;
   }
   const expectedBase = path.basename(expectedCommand).toLowerCase();
+  const expectedStem = expectedBase.replace(/\.(exe|cmd|bat)$/i, '');
   if (!expectedBase) return true;
+
+  if (process.platform === 'win32') {
+    return new Promise((resolve) => {
+      execFile(
+        'tasklist',
+        ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'],
+        { encoding: 'utf8', timeout: 2000 },
+        (err, stdout) => {
+          if (err || !stdout) {
+            resolve(true);
+            return;
+          }
+          const line = stdout.trim().toLowerCase();
+          if (!line || line.includes('no tasks are running')) {
+            resolve(true);
+            return;
+          }
+          resolve(line.includes(expectedBase) || (expectedStem.length > 0 && line.includes(expectedStem)));
+        }
+      );
+    });
+  }
 
   return new Promise((resolve) => {
     execFile('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8', timeout: 1000 }, (err, stdout) => {
