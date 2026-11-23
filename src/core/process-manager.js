@@ -168,7 +168,7 @@ export class ProcessManager {
         throw new Error(`Unsafe characters in batch script path: ${cmd}`);
       }
       cmdArgs = ['/d', '/s', '/c', cmd, ...cmdArgs];
-      cmd = process.env.COMSPEC || 'cmd.exe';
+      cmd = 'cmd.exe';
     }
 
     const logStreams = [];

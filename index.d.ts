@@ -461,7 +461,10 @@ export function stopService(
   name: string,
   options?: { force?: boolean; system?: boolean; shutdownTimeout?: number }
 ): Promise<boolean>;
-export function restartService(name: string, options?: { system?: boolean; shutdownTimeout?: number }): Promise<boolean>;
+export function restartService(
+  name: string,
+  options?: { system?: boolean; shutdownTimeout?: number }
+): Promise<boolean>;
 export function removeService(
   name: string,
   options?: boolean | { force?: boolean; system?: boolean; shutdownTimeout?: number }

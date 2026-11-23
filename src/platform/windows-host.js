@@ -58,7 +58,7 @@ export class WindowsServiceHost {
         return;
       }
       args = ['/d', '/s', '/c', command, ...args];
-      command = process.env.COMSPEC || 'cmd.exe';
+      command = 'cmd.exe';
     }
 
     this.lastStartTime = new Date().toISOString();
