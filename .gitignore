@@ -23,3 +23,7 @@ temp/
 
 # Release tools
 .litepacks-release-tools/
+
+# Local agent memory
+.bilmem/
+.bilmem

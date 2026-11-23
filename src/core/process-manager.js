@@ -162,9 +162,12 @@ export class ProcessManager {
     let cmd = command;
     let cmdArgs = Array.isArray(args) ? [...args] : [];
 
-    // On Windows, if executing a batch script, wrap with cmd.exe
+    // On Windows, if executing a batch script, wrap safely with cmd.exe without string concatenation
     if (process.platform === 'win32' && /\.(bat|cmd)$/i.test(cmd)) {
-      cmdArgs = ['/d', '/s', '/c', `"${cmd}"`, ...cmdArgs];
+      if (/[&|<>^%!\r\n"]/.test(cmd)) {
+        throw new Error(`Unsafe characters in batch script path: ${cmd}`);
+      }
+      cmdArgs = ['/d', '/s', '/c', cmd, ...cmdArgs];
       cmd = process.env.COMSPEC || 'cmd.exe';
     }
 

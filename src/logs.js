@@ -55,7 +55,7 @@ export async function readServiceLogs(filePaths, options = {}) {
     }
   });
   const maxLines = typeof options.lines === 'number' && options.lines > 0 ? options.lines : 100;
-  const grepPattern = options.grep ? new RegExp(options.grep, 'i') : null;
+  const grepNeedle = options.grep ? String(options.grep).toLowerCase() : null;
 
   // Collect all lines from currently existing files
   const allEntries = [];
@@ -80,7 +80,7 @@ export async function readServiceLogs(filePaths, options = {}) {
       const lines = content.split('\n');
       for (const line of lines) {
         if (!line && line.trim() === '') continue;
-        if (grepPattern && !grepPattern.test(line)) continue;
+        if (grepNeedle && !line.toLowerCase().includes(grepNeedle)) continue;
         allEntries.push(line);
       }
     } catch {
@@ -137,7 +137,7 @@ export async function readServiceLogs(filePaths, options = {}) {
                 const newLines = buffer.split('\n');
                 for (const line of newLines) {
                   if (!line || !line.trim()) continue;
-                  if (grepPattern && !grepPattern.test(line)) continue;
+                  if (grepNeedle && !line.toLowerCase().includes(grepNeedle)) continue;
                   console.log(line);
                   emitter.emit('line', line);
                 }

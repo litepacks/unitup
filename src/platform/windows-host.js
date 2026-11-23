@@ -51,9 +51,13 @@ export class WindowsServiceHost {
     const cwd = this.config.cwd || process.cwd();
     const env = { ...process.env, ...(this.config.env || {}) };
 
-    // On Windows, if executing a batch script, wrap with cmd.exe
+    // On Windows, if executing a batch script, wrap safely with cmd.exe without string concatenation
     if (process.platform === 'win32' && /\.(bat|cmd)$/i.test(command)) {
-      args = ['/d', '/s', '/c', `"${command}"`, ...args];
+      if (/[&|<>^%!\r\n"]/.test(command)) {
+        this.writeLog(`[unitup host] Unsafe characters in batch script path: ${command}\n`, true);
+        return;
+      }
+      args = ['/d', '/s', '/c', command, ...args];
       command = process.env.COMSPEC || 'cmd.exe';
     }
 

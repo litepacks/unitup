@@ -7,7 +7,16 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "ignore": ["node_modules", "dist", "coverage", "tmp", ".litepacks-release-tools", ".github", "package-lock.json"]
+    "ignore": [
+      "node_modules",
+      "dist",
+      "coverage",
+      "tmp",
+      ".litepacks-release-tools",
+      ".bilmem",
+      ".github",
+      "package-lock.json"
+    ]
   },
   "formatter": {
     "enabled": true,
